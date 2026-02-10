@@ -28,7 +28,7 @@ impl ConfigLoader {
         let mut servers: HashMap<String, VirtualServer> = HashMap::new();
 
         for (section_name, section_data) in &sections {
-            if let Some(server_name) = section_name.strip_prefix("server:") {
+            if let Some(server_name) = section_name.strip_prefix("server") {
                 let server = Self::parse_server(server_name, section_data)?;
                 servers.insert(server_name.to_string(), server);
             }

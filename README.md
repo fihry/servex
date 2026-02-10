@@ -1,4 +1,4 @@
-# LocalServer
+# servex
 
 A lightweight, HTTP/1.1-compliant web server written in Rust with non-blocking I/O.
 

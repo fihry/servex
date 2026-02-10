@@ -1,6 +1,4 @@
 use super::models::*;
-use std::path::Path;
-
 pub struct ConfigValidator;
 
 impl ConfigValidator {
