@@ -28,7 +28,13 @@ impl ConfigLoader {
         let mut servers: HashMap<String, VirtualServer> = HashMap::new();
 
         for (section_name, section_data) in &sections {
-            if let Some(server_name) = section_name.strip_prefix("server") {
+            if section_name == "server" {
+                let server = Self::parse_server("main", section_data)?;
+                servers.insert("main".to_string(), server);
+            } else if let Some(server_name) = section_name.strip_prefix("server:") {
+                let server = Self::parse_server(server_name, section_data)?;
+                servers.insert(server_name.to_string(), server);
+            } else if let Some(server_name) = section_name.strip_prefix("server") {
                 let server = Self::parse_server(server_name, section_data)?;
                 servers.insert(server_name.to_string(), server);
             }
@@ -83,11 +89,17 @@ impl ConfigLoader {
             .ok_or("Server missing 'host'")?
             .to_string();
 
-        let ports: Vec<u16> = data.get("ports")
-            .ok_or("Server missing 'ports'")?
-            .split(',')
-            .filter_map(|s| s.trim().parse().ok())
-            .collect();
+        let ports = match data.get("ports") {
+            Some(raw) => {
+                let parsed: Vec<u16> = raw
+                    .split(',')
+                    .filter_map(|part| part.trim().split_whitespace().next())
+                    .filter_map(|token| token.parse().ok())
+                    .collect();
+                if parsed.is_empty() { vec![8080] } else { parsed }
+            }
+            None => vec![8080],
+        };
 
         let is_default = data.get("default")
             .and_then(|s| s.parse().ok())
