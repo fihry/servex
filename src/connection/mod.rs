@@ -5,13 +5,4 @@ pub mod state;
 pub mod handler;
 
 
-// // Re-export commonly used types
-// pub use models::{
-//     HandleConnection,
-//     BufReader,
-//     TcpStream,
-// };
-
-// pub use state::ConnectionState;
-pub use stream::HandleConnection;
-// pub use buffer::ConnectionBuffer;
+pub use stream::Connection;
