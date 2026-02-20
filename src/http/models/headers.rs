@@ -11,4 +11,25 @@ impl Headers {
             headers: HashMap::new(),
         }
     }
+
+    pub fn insert(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        let key = key.into();
+        self.headers.insert(normalize_key(&key), value.into());
+    }
+
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.headers.get(&normalize_key(key)).map(|value| value.as_str())
+    }
+
+    pub fn contains(&self, key: &str) -> bool {
+        self.headers.contains_key(&normalize_key(key))
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &String)> {
+        self.headers.iter()
+    }
+}
+
+fn normalize_key(key: &str) -> String {
+    key.trim().to_ascii_lowercase()
 }
