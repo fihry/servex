@@ -1,0 +1,78 @@
+use crate::http::models::headers::Headers;
+use crate::http::parser::headers::parse_header_lines;
+
+#[derive(Debug)]
+pub struct MultipartPart {
+    pub headers: Headers,
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug)]
+pub enum MultipartError {
+    InvalidBoundary,
+    InvalidHeaders,
+}
+
+pub fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<MultipartPart>, MultipartError> {
+    if boundary.is_empty() {
+        return Err(MultipartError::InvalidBoundary);
+    }
+
+    let mut parts = Vec::new();
+    let boundary_marker = format!("--{}", boundary);
+    let boundary_bytes = boundary_marker.as_bytes();
+
+    let mut cursor = 0;
+    while cursor < body.len() {
+        let boundary_pos = find_boundary(body, boundary_bytes, cursor);
+        if boundary_pos.is_none() {
+            break;
+        }
+        let start = boundary_pos.unwrap() + boundary_bytes.len();
+        if body.len() >= start + 2 && &body[start..start + 2] == b"--" {
+            break;
+        }
+        let part_start = skip_crlf(body, start);
+        let header_end = find_header_end(body, part_start).ok_or(MultipartError::InvalidHeaders)?;
+        let header_block = &body[part_start..header_end];
+        let header_text = String::from_utf8_lossy(header_block);
+        let header_lines: Vec<&str> = header_text.split("\r\n").collect();
+        let headers = parse_header_lines(&header_lines).map_err(|_| MultipartError::InvalidHeaders)?;
+
+        let data_start = header_end + 4;
+        let next_boundary = find_boundary(body, boundary_bytes, data_start).ok_or(MultipartError::InvalidBoundary)?;
+        let mut data_end = next_boundary;
+        if data_end >= 2 && &body[data_end - 2..data_end] == b"\r\n" {
+            data_end -= 2;
+        }
+        parts.push(MultipartPart {
+            headers,
+            data: body[data_start..data_end].to_vec(),
+        });
+
+        cursor = next_boundary;
+    }
+
+    Ok(parts)
+}
+
+fn find_boundary(body: &[u8], boundary: &[u8], start: usize) -> Option<usize> {
+    body[start..]
+        .windows(boundary.len())
+        .position(|window| window == boundary)
+        .map(|pos| start + pos)
+}
+
+fn find_header_end(body: &[u8], start: usize) -> Option<usize> {
+    body[start..]
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|pos| start + pos)
+}
+
+fn skip_crlf(body: &[u8], mut index: usize) -> usize {
+    if body.len() >= index + 2 && &body[index..index + 2] == b"\r\n" {
+        index += 2;
+    }
+    index
+}
