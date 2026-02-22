@@ -1,16 +1,16 @@
-use crate::http::models::Status;
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
-pub fn handle_error(status: Status) -> Response {
-    let error_page = match status.code {
-        400 => include_str!("../error_pages/400.html"),
-        403 => include_str!("../error_pages/403.html"),
-        404 => include_str!("../error_pages/404.html"),
-        405 => include_str!("../error_pages/405.html"),
-        413 => include_str!("../error_pages/413.html"),
-        500 => include_str!("../error_pages/500.html"),
-        _ => "Error",
-    };
+pub fn load_error_page(error_pages: &HashMap<u16, PathBuf>, code: u16, reason: &str) -> String {
+    if let Some(path) = error_pages.get(&code) {
+        if let Ok(content) = fs::read_to_string(path) {
+            return content;
+        }
+    }
 
-    Response::new(status)
-        .with_body(error_page.as_bytes())
+    format!(
+        "<!doctype html><html><head><title>{0} {1}</title></head><body><h1>{0} {1}</h1></body></html>",
+        code, reason
+    )
 }
