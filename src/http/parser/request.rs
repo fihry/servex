@@ -75,3 +75,52 @@ fn find_header_end(buffer: &[u8]) -> Option<usize> {
         .windows(4)
         .position(|window| window == b"\r\n\r\n")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_get_request_without_body() {
+        let raw = b"GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        let (request, consumed) = parse_request(raw).expect("request should parse");
+
+        assert_eq!(request.path, "/hello");
+        assert_eq!(request.version, "HTTP/1.1");
+        assert_eq!(request.body, Vec::<u8>::new());
+        assert_eq!(consumed, raw.len());
+    }
+
+    #[test]
+    fn parses_content_length_body() {
+        let raw = b"POST /upload HTTP/1.1\r\nHost: localhost\r\nContent-Length: 5\r\n\r\nhello";
+        let (request, consumed) = parse_request(raw).expect("request should parse");
+
+        assert_eq!(request.path, "/upload");
+        assert_eq!(request.body, b"hello");
+        assert_eq!(consumed, raw.len());
+    }
+
+    #[test]
+    fn parses_chunked_body() {
+        let raw = b"POST /chunk HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n";
+        let (request, consumed) = parse_request(raw).expect("chunked request should parse");
+
+        assert_eq!(request.body, b"hello");
+        assert_eq!(consumed, raw.len());
+    }
+
+    #[test]
+    fn rejects_malformed_headers() {
+        let raw = b"GET / HTTP/1.1\r\nHost localhost\r\n\r\n";
+        let error = parse_request(raw).expect_err("request should fail");
+        assert!(matches!(error, RequestParseError::Invalid(_)));
+    }
+
+    #[test]
+    fn reports_incomplete_body() {
+        let raw = b"POST /x HTTP/1.1\r\nContent-Length: 10\r\n\r\nabc";
+        let error = parse_request(raw).expect_err("request should be incomplete");
+        assert!(matches!(error, RequestParseError::Incomplete));
+    }
+}

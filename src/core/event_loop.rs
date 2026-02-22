@@ -107,6 +107,7 @@ impl EventLoop {
 
         if let Some(connection) = self.connections.get_mut(&token) {
             if event.is_readable() {
+                // kljdas
                 if let Some(state) = connection.readable()? {
                     if state == crate::connection::state::ConnectionState::Writing {
                         connection.reregister(self.poll.registry(), Interest::WRITABLE)?;
