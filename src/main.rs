@@ -1,7 +1,10 @@
+mod app;
 mod config;
 mod connection;
 mod core;
+mod handlers;
 mod http;
+mod routing;
 
 use config::loader::ConfigLoader;
 use core::event_loop::EventLoop;
