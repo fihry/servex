@@ -1,14 +1,17 @@
 use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use mio::event::Event;
 use mio::{Events, Interest, Poll, Token};
 use mio::net::TcpListener;
 
+use crate::app::AppContext;
 use crate::config::models::ServerConfig;
 use crate::connection::Connection;
+use crate::connection::handler::RequestHandler;
 
 use super::listener::Listener;
 use super::registry::{TokenFactory, LISTENER_TOKEN_BASE};
@@ -20,6 +23,7 @@ pub struct EventLoop {
     connections: HashMap<Token, Connection>,
     token_factory: TokenFactory,
     timeout: Timeout,
+    request_handler: Arc<RequestHandler>,
 }
 
 impl EventLoop {
@@ -33,6 +37,10 @@ impl EventLoop {
             connections: HashMap::new(),
             token_factory: TokenFactory::new(),
             timeout: Timeout::new(config.global.timeout),
+            request_handler: Arc::new(RequestHandler::new(Arc::new(
+                AppContext::new(config)
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?,
+            ))),
         })
     }
 
@@ -87,7 +95,7 @@ impl EventLoop {
             match listener.listener.accept() {
                 Ok((stream, _addr)) => {
                     let token = self.token_factory.next();
-                    let mut connection = Connection::new(token, stream);
+                    let mut connection = Connection::new(token, stream, Arc::clone(&self.request_handler));
                     connection.register(self.poll.registry())?;
                     self.connections.insert(token, connection);
                 }
@@ -107,10 +115,12 @@ impl EventLoop {
 
         if let Some(connection) = self.connections.get_mut(&token) {
             if event.is_readable() {
-                // kljdas
                 if let Some(state) = connection.readable()? {
                     if state == crate::connection::state::ConnectionState::Writing {
                         connection.reregister(self.poll.registry(), Interest::WRITABLE)?;
+                    }
+                    if state == crate::connection::state::ConnectionState::Reading {
+                        connection.reregister(self.poll.registry(), Interest::READABLE)?;
                     }
                     if state == crate::connection::state::ConnectionState::Closed {
                         remove = true;
@@ -120,6 +130,9 @@ impl EventLoop {
 
             if event.is_writable() {
                 if let Some(state) = connection.writable()? {
+                    if state == crate::connection::state::ConnectionState::Reading {
+                        connection.reregister(self.poll.registry(), Interest::READABLE)?;
+                    }
                     if state == crate::connection::state::ConnectionState::Closed {
                         remove = true;
                     }
