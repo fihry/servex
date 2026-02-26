@@ -27,19 +27,17 @@ impl ConfigLoader {
         }
 
         // Parse servers and routes
-        let mut server: VirtualServer = VirtualServer::default();
-
         // Parse routes and add to servers
         for (section_name, section_data) in &sections {
             if section_name == "server" {
-                server = Self::parse_server("main", section_data)?;
+                config.server = Self::parse_server("main", section_data)?;
             }
             if let Some(route_path) = section_name.strip_prefix("route:") {
                 let parts: Vec<&str> = route_path.splitn(2, ':').collect();
                 if parts.len() == 2 {
                     let route: Route = Self::parse_route(section_data)?;
 
-                    server.routes.push(route);
+                    config.server.routes.push(route);
                 }
             }
         }
@@ -92,10 +90,6 @@ impl ConfigLoader {
             None => vec![8080],
         };
 
-        let is_default = data
-            .get("default")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(false);
 
         let root = data
             .get("root")
@@ -106,7 +100,6 @@ impl ConfigLoader {
             name: name.to_string(),
             host,
             ports,
-            is_default,
             root,
             routes: vec![],
         })

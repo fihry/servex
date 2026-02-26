@@ -24,7 +24,6 @@ pub struct VirtualServer {
     pub name: String,
     pub host: String,
     pub ports: Vec<u16>,
-    pub is_default: bool,
     pub root: PathBuf,
     pub routes: Vec<Route>,
 }
@@ -69,7 +68,6 @@ impl VirtualServer {
             name: String::new(),
             host: String::new(),
             ports: vec![],
-            is_default: false,
             root: PathBuf::new(),
             routes: Vec::new(),
         }
@@ -115,7 +113,6 @@ impl fmt::Display for VirtualServer {
         writeln!(f, "Server: {}", self.name)?;
         writeln!(f, "\thost: {}", self.host)?;
         writeln!(f, "\tports: {:?}", self.ports)?;
-        writeln!(f, "\tis_default: {}", self.is_default)?;
         writeln!(f, "\troot: {}", self.root.display())?;
 
         if !self.routes.is_empty() {
