@@ -1,11 +1,15 @@
+use core::time;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::{ default, fmt };
+use std::ptr::null;
 
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub global: GlobalConfig,
-    pub servers: Vec<VirtualServer>,
+    pub server: VirtualServer,
     pub error_pages: HashMap<u16, PathBuf>,
+    // pub sessions: Session,
 }
 
 #[derive(Debug, Clone)]
@@ -50,22 +54,142 @@ pub struct Redirect {
     pub target: String,
 }
 
-impl Default for ServerConfig {
-    fn default() -> Self {
+pub struct Session<'a> {
+    enabled: bool,
+    timeout: usize,
+    cookie_name: &'a str,
+    secure: bool,
+    http_only: bool,
+    // same_site: &'a str,
+}
+
+impl VirtualServer {
+    pub fn default() -> Self {
+        Self {
+            name: String::new(),
+            host: String::new(),
+            ports: vec![],
+            is_default: false,
+            root: PathBuf::new(),
+            routes: Vec::new(),
+        }
+    }
+}
+
+impl ServerConfig {
+    pub fn default() -> Self {
         Self {
             global: GlobalConfig::default(),
-            servers: vec![],
+            server: VirtualServer::default(),
             error_pages: HashMap::new(),
         }
     }
 }
 
-impl Default for GlobalConfig {
-    fn default() -> Self {
+impl GlobalConfig {
+    pub fn default() -> Self {
         Self {
             max_body_size: 1_048_576, // 1MB
             timeout: 30,
             keep_alive: true,
         }
+    }
+}
+
+impl fmt::Display for GlobalConfig {
+    // This function must return a `fmt::Result`
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Use the write! macro to write the formatted string::new() to the formatter `f`
+        // write!(f, "({}, {})", self.x, self.y)
+        write!(
+            f,
+            "max body size: {}\n\ttimeout: {}\n\tkeep alive: {}.\n",
+            self.max_body_size,
+            self.timeout,
+            self.keep_alive
+        )
+    }
+}
+impl fmt::Display for VirtualServer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Server: {}", self.name)?;
+        writeln!(f, "\thost: {}", self.host)?;
+        writeln!(f, "\tports: {:?}", self.ports)?;
+        writeln!(f, "\tis_default: {}", self.is_default)?;
+        writeln!(f, "\troot: {}", self.root.display())?;
+
+        if !self.routes.is_empty() {
+            writeln!(f, "\troutes:")?;
+            for route in &self.routes {
+                writeln!(f, "\t\t{}", route)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for Route {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Route: {}", self.path)?;
+        writeln!(f, "\tmethods: {:?}", self.methods)?;
+
+        if let Some(root) = &self.root {
+            writeln!(f, "\troot: {}", root.display())?;
+        }
+
+        if let Some(index) = &self.index {
+            writeln!(f, "\tindex: {}", index)?;
+        }
+
+        if let Some(redirect) = &self.redirect {
+            writeln!(f, "\tredirect: {}", redirect)?;
+        }
+
+        if let Some(cgi) = &self.cgi {
+            writeln!(f, "\tcgi: {}", cgi)?;
+        }
+
+        if let Some(upload_dir) = &self.upload_dir {
+            writeln!(f, "\tupload_dir: {}", upload_dir.display())?;
+        }
+
+        writeln!(f, "\tautoindex: {}", self.autoindex)?;
+
+        if let Some(size) = self.max_file_size {
+            writeln!(f, "\tmax_file_size: {}", size)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for CgiConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "extension: {}", self.extension)?;
+        writeln!(f, "\texecutor: {}", self.executor.display())
+    }
+}
+
+impl fmt::Display for Redirect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} -> {}", self.status, self.target)
+    }
+}
+
+impl fmt::Display for ServerConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Global Config:\n\t{}", self.global)?;
+
+        if !self.error_pages.is_empty() {
+            writeln!(f, "Error Pages:")?;
+            for (code, path) in &self.error_pages {
+                writeln!(f, "\t{} => {}", code, path.display())?;
+            }
+        }
+        writeln!(f, "Servers:")?;
+        writeln!(f, "\t{}", self.server)?;
+
+        Ok(())
     }
 }

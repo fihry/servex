@@ -6,7 +6,7 @@ impl ConfigValidator {
     pub fn validate(config: &ServerConfig) -> Result<(), String> {
         Self::validate_global(&config.global)?;
         Self::validate_error_pages(&config.error_pages)?;
-        Self::validate_servers(&config.servers)?;
+        Self::validate_servers(&config.server)?;
         Ok(())
     }
 
@@ -24,7 +24,9 @@ impl ConfigValidator {
     }
 
     /// Validate error page paths exist
-    fn validate_error_pages(pages: &std::collections::HashMap<u16, std::path::PathBuf>) -> Result<(), String> {
+    fn validate_error_pages(
+        pages: &std::collections::HashMap<u16, std::path::PathBuf>
+    ) -> Result<(), String> {
         for (code, path) in pages {
             if !path.exists() {
                 return Err(format!("Error page for {} not found: {:?}", code, path));
@@ -38,33 +40,14 @@ impl ConfigValidator {
     }
 
     /// Validate all servers
-    fn validate_servers(servers: &[VirtualServer]) -> Result<(), String> {
-        if servers.is_empty() {
-            return Err("At least one server must be defined".to_string());
-        }
-
-        // Check for port conflicts
+    fn validate_servers(server: &VirtualServer) -> Result<(), String> {
         let mut used_ports = std::collections::HashSet::new();
-        for server in servers {
-            Self::validate_server(server)?;
+        Self::validate_server(server)?;
 
-            for &port in &server.ports {
-                if !used_ports.insert((server.host.clone(), port)) {
-                    return Err(format!(
-                        "Port {} already in use on host {}",
-                        port, server.host
-                    ));
-                }
+        for &port in &server.ports {
+            if !used_ports.insert((server.host.clone(), port)) {
+                return Err(format!("Port {} already in use on host {}", port, server.host));
             }
-        }
-
-        // Ensure exactly one default server
-        let default_count = servers.iter().filter(|s| s.is_default).count();
-        if default_count == 0 {
-            return Err("At least one server must be marked as default".to_string());
-        }
-        if default_count > 1 {
-            return Err("Only one server can be marked as default".to_string());
         }
 
         Ok(())
@@ -90,17 +73,15 @@ impl ConfigValidator {
 
         // Validate root directory exists
         if !server.root.exists() {
-            return Err(format!(
-                "Server '{}' root directory does not exist: {:?}",
-                server.name, server.root
-            ));
+            return Err(
+                format!("Server '{}' root directory does not exist: {:?}", server.name, server.root)
+            );
         }
 
         if !server.root.is_dir() {
-            return Err(format!(
-                "Server '{}' root is not a directory: {:?}",
-                server.name, server.root
-            ));
+            return Err(
+                format!("Server '{}' root is not a directory: {:?}", server.name, server.root)
+            );
         }
 
         // Validate routes
@@ -136,10 +117,9 @@ impl ConfigValidator {
         // Validate CGI configuration
         if let Some(cgi) = &route.cgi {
             if !cgi.executor.exists() {
-                return Err(format!(
-                    "CGI executor not found for route '{}': {:?}",
-                    route.path, cgi.executor
-                ));
+                return Err(
+                    format!("CGI executor not found for route '{}': {:?}", route.path, cgi.executor)
+                );
             }
 
             if cgi.extension.is_empty() {
@@ -147,20 +127,26 @@ impl ConfigValidator {
             }
 
             if !cgi.extension.starts_with('.') {
-                return Err(format!(
-                    "CGI extension must start with '.' for route '{}': {}",
-                    route.path, cgi.extension
-                ));
+                return Err(
+                    format!(
+                        "CGI extension must start with '.' for route '{}': {}",
+                        route.path,
+                        cgi.extension
+                    )
+                );
             }
         }
 
         // Validate redirect
         if let Some(redirect) = &route.redirect {
             if ![301, 302, 303, 307, 308].contains(&redirect.status) {
-                return Err(format!(
-                    "Invalid redirect status {} for route '{}'",
-                    redirect.status, route.path
-                ));
+                return Err(
+                    format!(
+                        "Invalid redirect status {} for route '{}'",
+                        redirect.status,
+                        route.path
+                    )
+                );
             }
 
             if redirect.target.is_empty() {
@@ -171,27 +157,30 @@ impl ConfigValidator {
         // Validate upload directory
         if let Some(upload_dir) = &route.upload_dir {
             if !upload_dir.exists() {
-                return Err(format!(
-                    "Upload directory does not exist for route '{}': {:?}",
-                    route.path, upload_dir
-                ));
+                return Err(
+                    format!(
+                        "Upload directory does not exist for route '{}': {:?}",
+                        route.path,
+                        upload_dir
+                    )
+                );
             }
 
             if !upload_dir.is_dir() {
-                return Err(format!(
-                    "Upload path is not a directory for route '{}': {:?}",
-                    route.path, upload_dir
-                ));
+                return Err(
+                    format!(
+                        "Upload path is not a directory for route '{}': {:?}",
+                        route.path,
+                        upload_dir
+                    )
+                );
             }
         }
 
         // Validate root if specified
         if let Some(root) = &route.root {
             if !root.exists() {
-                return Err(format!(
-                    "Route root does not exist for '{}': {:?}",
-                    route.path, root
-                ));
+                return Err(format!("Route root does not exist for '{}': {:?}", route.path, root));
             }
         }
 

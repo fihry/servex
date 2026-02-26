@@ -27,12 +27,7 @@ pub struct Router {
 impl Router {
     pub fn new(config: &ServerConfig) -> Result<Self, String> {
         let default_server = config
-            .servers
-            .iter()
-            .find(|server| server.is_default)
-            .cloned()
-            .ok_or_else(|| "No default server configured".to_string())?;
-
+            .server.clone();
         Ok(Self { default_server })
     }
 
