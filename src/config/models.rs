@@ -1,13 +1,12 @@
-use core::time;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::{ default, fmt };
-use std::ptr::null;
+use std::fmt;
+use super::server::Server;
 
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub global: GlobalConfig,
-    pub server: VirtualServer,
+    pub server: Server,
     pub error_pages: HashMap<u16, PathBuf>,
     // pub sessions: Session,
 }
@@ -19,14 +18,6 @@ pub struct GlobalConfig {
     pub keep_alive: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct VirtualServer {
-    pub name: String,
-    pub host: String,
-    pub ports: Vec<u16>,
-    pub root: PathBuf,
-    pub routes: Vec<Route>,
-}
 
 #[derive(Debug, Clone)]
 pub struct Route {
@@ -62,23 +53,12 @@ pub struct Session<'a> {
     // same_site: &'a str,
 }
 
-impl VirtualServer {
-    pub fn default() -> Self {
-        Self {
-            name: String::new(),
-            host: String::new(),
-            ports: vec![],
-            root: PathBuf::new(),
-            routes: Vec::new(),
-        }
-    }
-}
 
 impl ServerConfig {
     pub fn default() -> Self {
         Self {
             global: GlobalConfig::default(),
-            server: VirtualServer::default(),
+            server: Server::default(),
             error_pages: HashMap::new(),
         }
     }
@@ -108,7 +88,7 @@ impl fmt::Display for GlobalConfig {
         )
     }
 }
-impl fmt::Display for VirtualServer {
+impl fmt::Display for Server {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Server: {}", self.name)?;
         writeln!(f, "\thost: {}", self.host)?;

@@ -40,7 +40,7 @@ impl ConfigValidator {
     }
 
     /// Validate all servers
-    fn validate_servers(server: &VirtualServer) -> Result<(), String> {
+    fn validate_servers(server: &Server) -> Result<(), String> {
         let mut used_ports = std::collections::HashSet::new();
         Self::validate_server(server)?;
 
@@ -54,7 +54,7 @@ impl ConfigValidator {
     }
 
     /// Validate a single server
-    fn validate_server(server: &VirtualServer) -> Result<(), String> {
+    fn validate_server(server: &Server) -> Result<(), String> {
         // Validate host
         if server.host.is_empty() {
             return Err(format!("Server '{}' has empty host", server.name));

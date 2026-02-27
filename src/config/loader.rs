@@ -1,7 +1,9 @@
 use super::models::*;
 use super::parser::IniParser;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::path::{ Path, PathBuf };
+use super::server::Server;
 
 pub struct ConfigLoader;
 
@@ -14,8 +16,7 @@ impl ConfigLoader {
     fn build_config(
         sections: HashMap<String, HashMap<String, String>>
     ) -> Result<ServerConfig, String> {
-        let mut config = ServerConfig::default();
-
+        let mut config: ServerConfig = ServerConfig::default();
         // Parse global config
         if let Some(global) = sections.get("global") {
             config.global = Self::parse_global(global)?;
@@ -30,7 +31,7 @@ impl ConfigLoader {
         // Parse routes and add to servers
         for (section_name, section_data) in &sections {
             if section_name == "server" {
-                config.server = Self::parse_server("main", section_data)?;
+                config.server.inject("main", section_data)?;
             }
             if let Some(route_path) = section_name.strip_prefix("route:") {
                 let parts: Vec<&str> = route_path.splitn(2, ':').collect();
@@ -71,39 +72,6 @@ impl ConfigLoader {
         Ok(pages)
     }
 
-    fn parse_server(name: &str, data: &HashMap<String, String>) -> Result<VirtualServer, String> {
-        let host = data.get("host").ok_or("Server missing 'host'")?.to_string();
-
-        let ports = match data.get("ports") {
-            Some(raw) => {
-                let parsed: Vec<u16> = raw
-                    .split(',')
-                    .filter_map(|part| part.trim().split_whitespace().next())
-                    .filter_map(|token| token.parse().ok())
-                    .collect();
-                if parsed.is_empty() {
-                    vec![8080]
-                } else {
-                    parsed
-                }
-            }
-            None => vec![8080],
-        };
-
-
-        let root = data
-            .get("root")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("./www"));
-
-        Ok(VirtualServer {
-            name: name.to_string(),
-            host,
-            ports,
-            root,
-            routes: vec![],
-        })
-    }
 
     fn parse_route(data: &HashMap<String, String>) -> Result<Route, String> {
         let path = data.get("path").ok_or("Route missing 'path'")?.to_string();

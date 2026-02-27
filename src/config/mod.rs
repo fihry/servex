@@ -4,12 +4,12 @@ pub mod models;
 pub mod parser;
 pub mod loader;
 pub mod validator;
+pub mod server;
 
 // Re-export commonly used types
 pub use models::{
     ServerConfig,
     GlobalConfig,
-    VirtualServer,
     Route,
     CgiConfig,
     Redirect,

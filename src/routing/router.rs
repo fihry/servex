@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::config::models::{Route, ServerConfig, VirtualServer};
+use crate::config::models::{Route, ServerConfig, Server};
 use crate::http::models::method::Method;
 
 #[derive(Clone, Debug)]
@@ -21,7 +21,7 @@ pub enum RouteDecision {
 
 #[derive(Clone)]
 pub struct Router {
-    default_server: VirtualServer,
+    default_server: Server,
 }
 
 impl Router {
