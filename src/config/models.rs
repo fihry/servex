@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::fmt;
+use std::{ fmt, usize };
 use super::server::Server;
 
 #[derive(Debug, Clone)]
@@ -8,7 +8,7 @@ pub struct ServerConfig {
     pub global: GlobalConfig,
     pub server: Server,
     pub error_pages: HashMap<u16, PathBuf>,
-    // pub sessions: Session,
+    pub sessions: Session,
 }
 
 #[derive(Debug, Clone)]
@@ -17,7 +17,6 @@ pub struct GlobalConfig {
     pub timeout: u64,
     pub keep_alive: bool,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Route {
@@ -44,15 +43,15 @@ pub struct Redirect {
     pub target: String,
 }
 
-pub struct Session<'a> {
+#[derive(Debug, Clone)]
+pub struct Session {
     enabled: bool,
     timeout: usize,
-    cookie_name: &'a str,
+    cookie_name: String,
     secure: bool,
     http_only: bool,
     // same_site: &'a str,
 }
-
 
 impl ServerConfig {
     pub fn default() -> Self {
@@ -60,7 +59,53 @@ impl ServerConfig {
             global: GlobalConfig::default(),
             server: Server::default(),
             error_pages: HashMap::new(),
+            sessions: Session::default(),
         }
+    }
+}
+
+impl Session {
+    pub fn default() -> Self {
+        Self {
+            enabled: false,
+            timeout: 0,
+            cookie_name: "".to_string(),
+            secure: false,
+            http_only: false,
+        }
+    }
+
+    pub fn inject(&mut self, data: &HashMap<String, String>) -> Result<(), String> {
+        self.enabled = data
+            .get("enabled")
+            .ok_or("Missing 'enabled' key in data")?
+            .parse::<bool>()
+            .map_err(|_| "Value for 'enabled' must be a boolean (true/false)")?;
+
+        self.timeout = data
+            .get("timeout")
+            .ok_or("Missing 'timeout' key in data")?
+            .parse::<usize>()
+            .map_err(|_| "Value for 'timeout' must be a positive integer (usize)")?;
+
+        self.cookie_name = data
+            .get("cookie_name")
+            .ok_or("Missing 'cookie_name' key in data")?
+            .to_string(); // String parsing usually doesn't fail, just clones
+
+        self.secure = data
+            .get("secure")
+            .ok_or("Missing 'secure' key in data")?
+            .parse::<bool>()
+            .map_err(|_| "Value for 'secure' must be a boolean (true/false)")?;
+
+        self.http_only = data
+            .get("http_only")
+            .ok_or("Missing 'http_only' key in data")?
+            .parse::<bool>()
+            .map_err(|_| "Value for 'http_only' must be a boolean (true/false)")?;
+
+        Ok(())
     }
 }
 
