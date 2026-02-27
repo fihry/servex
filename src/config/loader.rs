@@ -31,7 +31,7 @@ impl ConfigLoader {
         // Parse routes and add to servers
         for (section_name, section_data) in &sections {
             if section_name == "server" {
-                config.server.inject("main", section_data)?;
+                config.server.inject(section_name, section_data)?;
             }
             if let Some(route_path) = section_name.strip_prefix("route:") {
                 let parts: Vec<&str> = route_path.splitn(2, ':').collect();
@@ -40,6 +40,9 @@ impl ConfigLoader {
 
                     config.server.routes.push(route);
                 }
+            }
+            if section_name == "session" {
+                config.sessions.inject(section_data)?;
             }
         }
 

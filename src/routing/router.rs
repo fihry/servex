@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::config::models::{Route, ServerConfig, Server};
+use crate::config::{server::Server, models::{Route, ServerConfig}};
 use crate::http::models::method::Method;
 
 #[derive(Clone, Debug)]

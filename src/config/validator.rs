@@ -1,4 +1,5 @@
 use super::models::*;
+use super::server::Server;
 pub struct ConfigValidator;
 
 impl ConfigValidator {
