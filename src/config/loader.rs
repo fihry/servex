@@ -27,8 +27,8 @@ impl ConfigLoader {
             config.error_pages = Self::parse_error_pages(errors)?;
         }
 
-        // Parse servers and routes
-        // Parse routes and add to servers
+
+
         for (section_name, section_data) in &sections {
             if section_name == "server" {
                 config.server.inject(section_name, section_data)?;
