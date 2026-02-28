@@ -1,0 +1,1 @@
+1 => make the config parser handler error if some section doesn't exists
