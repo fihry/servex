@@ -1,6 +1,7 @@
 mod config;
 mod http;
 mod routing;
+mod runtime;
 
 use config::loader::ConfigLoader;
 
@@ -11,5 +12,5 @@ fn main() -> Result<(), String> {
         println!("the config: \n{}", config);
     }
     config::validator::ConfigValidator::validate(&config)?;
-    Ok(())
+    runtime::run(config)
 }

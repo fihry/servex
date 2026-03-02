@@ -1,9 +1,8 @@
 use super::models::*;
 use super::parser::IniParser;
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::path::{ Path, PathBuf };
 use super::server::Server;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 pub struct ConfigLoader;
 
@@ -30,19 +29,50 @@ impl ConfigLoader {
 
 
         for (section_name, section_data) in &sections {
-            if section_name == "server" {
-                config.server.inject(section_name, section_data)?;
-            }
-            if let Some(route_path) = section_name.strip_prefix("route:") {
-                let parts: Vec<&str> = route_path.splitn(2, ':').collect();
-                if parts.len() == 2 {
-                    let route: Route = Self::parse_route(section_data)?;
-
-                    config.server.routes.push(route);
-                }
-            }
             if section_name == "session" {
                 config.sessions.inject(section_data)?;
+                continue;
+            }
+
+            if section_name == "server" {
+                let mut server = Server::default();
+                server.inject("default", section_data)?;
+                config.servers.push(server);
+                continue;
+            }
+
+            if let Some(server_name) = section_name.strip_prefix("server:") {
+                let mut server = Server::default();
+                server.inject(server_name, section_data)?;
+                config.servers.push(server);
+            }
+        }
+
+        if config.servers.is_empty() {
+            return Err("No server sections found".to_string());
+        }
+
+        for (section_name, section_data) in &sections {
+            if let Some(route_path) = section_name.strip_prefix("route:") {
+                let (server_name, _) = match route_path.split_once(':') {
+                    Some(parts) => parts,
+                    None => return Err(format!("Invalid route section '{}'", section_name)),
+                };
+                let route = Self::parse_route(section_data)?;
+                if let Some(server) = config
+                    .servers
+                    .iter_mut()
+                    .find(|server| server.name == server_name)
+                {
+                    server.routes.push(route);
+                } else if config.servers.len() == 1 {
+                    config.servers[0].routes.push(route);
+                } else {
+                    return Err(format!(
+                        "Route section '{}' references unknown server '{}'",
+                        section_name, server_name
+                    ));
+                }
             }
         }
 
@@ -74,7 +104,6 @@ impl ConfigLoader {
         }
         Ok(pages)
     }
-
 
     fn parse_route(data: &HashMap<String, String>) -> Result<Route, String> {
         let path = data.get("path").ok_or("Route missing 'path'")?.to_string();

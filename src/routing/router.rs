@@ -1,13 +1,19 @@
 use std::path::PathBuf;
 
-use crate::config::{server::Server, models::{Route, ServerConfig}};
+use crate::config::{
+    models::{CgiConfig, Route, ServerConfig},
+    server::Server,
+};
 use crate::http::models::method::Method;
 
 #[derive(Clone, Debug)]
 pub enum RouteDecision {
     NotFound,
     MethodNotAllowed,
-    Redirect { status: u16, target: String },
+    Redirect {
+        status: u16,
+        target: String,
+    },
     Matched {
         route_path: String,
         request_path: String,
@@ -16,23 +22,51 @@ pub enum RouteDecision {
         index: Option<String>,
         autoindex: bool,
         upload_dir: Option<PathBuf>,
+        cgi: Option<CgiConfig>,
+        max_file_size: Option<usize>,
     },
 }
 
 #[derive(Clone)]
 pub struct Router {
-    default_server: Server,
+    servers: Vec<Server>,
 }
 
 impl Router {
     pub fn new(config: &ServerConfig) -> Result<Self, String> {
-        let default_server = config
-            .server.clone();
-        Ok(Self { default_server })
+        Ok(Self {
+            servers: config.servers.clone(),
+        })
     }
 
-    pub fn resolve(&self, request_path: &str, method: &Method) -> RouteDecision {
-        let route = self.best_route(request_path);
+    pub fn select_server<'a>(
+        &'a self,
+        candidate_servers: &[usize],
+        host_header: Option<&str>,
+    ) -> Option<&'a Server> {
+        if candidate_servers.is_empty() {
+            return None;
+        }
+
+        if let Some(host) = host_header.and_then(normalized_host_from_header) {
+            for index in candidate_servers {
+                if let Some(server) = self.servers.get(*index) {
+                    if server
+                        .server_names
+                        .iter()
+                        .any(|name| name.eq_ignore_ascii_case(host))
+                    {
+                        return Some(server);
+                    }
+                }
+            }
+        }
+
+        self.servers.get(candidate_servers[0])
+    }
+
+    pub fn resolve(&self, server: &Server, request_path: &str, method: &Method) -> RouteDecision {
+        let route = best_route(server, request_path);
         let route = match route {
             Some(route) => route,
             None => return RouteDecision::NotFound,
@@ -52,7 +86,7 @@ impl Router {
         let root = route
             .root
             .clone()
-            .unwrap_or_else(|| self.default_server.root.clone());
+            .unwrap_or_else(|| server.root.clone());
 
         RouteDecision::Matched {
             route_path: route.path.clone(),
@@ -62,16 +96,18 @@ impl Router {
             index: route.index.clone(),
             autoindex: route.autoindex,
             upload_dir: route.upload_dir.clone(),
+            cgi: route.cgi.clone(),
+            max_file_size: route.max_file_size,
         }
     }
+}
 
-    fn best_route(&self, request_path: &str) -> Option<&Route> {
-        self.default_server
-            .routes
-            .iter()
-            .filter(|route| path_matches(&route.path, request_path))
-            .max_by_key(|route| route.path.len())
-    }
+fn best_route<'a>(server: &'a Server, request_path: &str) -> Option<&'a Route> {
+    server
+        .routes
+        .iter()
+        .filter(|route| path_matches(&route.path, request_path))
+        .max_by_key(|route| route.path.len())
 }
 
 fn path_matches(route_path: &str, request_path: &str) -> bool {
@@ -85,4 +121,17 @@ fn path_matches(route_path: &str, request_path: &str) -> bool {
 fn is_method_allowed(route: &Route, method: &Method) -> bool {
     let method_str = method.to_string();
     route.methods.iter().any(|allowed| allowed == &method_str)
+}
+
+fn normalized_host_from_header(raw_host: &str) -> Option<&str> {
+    let host = raw_host.trim();
+    if host.is_empty() {
+        return None;
+    }
+    if let Some((value, _)) = host.rsplit_once(':') {
+        if !value.is_empty() && !value.contains(']') && host.matches(':').count() == 1 {
+            return Some(value);
+        }
+    }
+    Some(host)
 }

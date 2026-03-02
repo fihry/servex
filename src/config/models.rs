@@ -1,12 +1,12 @@
+use super::server::Server;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::{ fmt, usize };
-use super::server::Server;
+use std::{fmt, usize};
 
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub global: GlobalConfig,
-    pub server: Server,
+    pub servers: Vec<Server>,
     pub error_pages: HashMap<u16, PathBuf>,
     pub sessions: Session,
 }
@@ -57,7 +57,7 @@ impl ServerConfig {
     pub fn default() -> Self {
         Self {
             global: GlobalConfig::default(),
-            server: Server::default(),
+            servers: Vec::new(),
             error_pages: HashMap::new(),
             sessions: Session::default(),
         }
@@ -107,6 +107,26 @@ impl Session {
 
         Ok(())
     }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn timeout(&self) -> usize {
+        self.timeout
+    }
+
+    pub fn cookie_name(&self) -> &str {
+        &self.cookie_name
+    }
+
+    pub fn secure(&self) -> bool {
+        self.secure
+    }
+
+    pub fn http_only(&self) -> bool {
+        self.http_only
+    }
 }
 
 impl GlobalConfig {
@@ -127,15 +147,14 @@ impl fmt::Display for GlobalConfig {
         write!(
             f,
             "max body size: {}\n\ttimeout: {}\n\tkeep alive: {}.\n",
-            self.max_body_size,
-            self.timeout,
-            self.keep_alive
+            self.max_body_size, self.timeout, self.keep_alive
         )
     }
 }
 impl fmt::Display for Server {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Server: {}", self.name)?;
+        writeln!(f, "\tserver_names: {:?}", self.server_names)?;
         writeln!(f, "\thost: {}", self.host)?;
         writeln!(f, "\tports: {:?}", self.ports)?;
         writeln!(f, "\troot: {}", self.root.display())?;
@@ -210,7 +229,9 @@ impl fmt::Display for ServerConfig {
             }
         }
         writeln!(f, "Servers:")?;
-        writeln!(f, "\t{}", self.server)?;
+        for server in &self.servers {
+            writeln!(f, "\t{}", server)?;
+        }
 
         Ok(())
     }

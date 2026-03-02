@@ -7,7 +7,7 @@ impl ConfigValidator {
     pub fn validate(config: &ServerConfig) -> Result<(), String> {
         Self::validate_global(&config.global)?;
         Self::validate_error_pages(&config.error_pages)?;
-        Self::validate_servers(&config.server)?;
+        Self::validate_servers(&config.servers)?;
         Ok(())
     }
 
@@ -41,16 +41,13 @@ impl ConfigValidator {
     }
 
     /// Validate all servers
-    fn validate_servers(server: &Server) -> Result<(), String> {
-        let mut used_ports = std::collections::HashSet::new();
-        Self::validate_server(server)?;
-
-        for &port in &server.ports {
-            if !used_ports.insert((server.host.clone(), port)) {
-                return Err(format!("Port {} already in use on host {}", port, server.host));
-            }
+    fn validate_servers(servers: &[Server]) -> Result<(), String> {
+        if servers.is_empty() {
+            return Err("No server configured".to_string());
         }
-
+        for server in servers {
+            Self::validate_server(server)?;
+        }
         Ok(())
     }
 
@@ -66,10 +63,21 @@ impl ConfigValidator {
             return Err(format!("Server '{}' has no ports defined", server.name));
         }
 
+        let mut unique_ports = std::collections::HashSet::new();
         for &port in &server.ports {
             if port == 0 {
                 return Err(format!("Server '{}' has invalid port 0", server.name));
             }
+            if !unique_ports.insert(port) {
+                return Err(format!(
+                    "Server '{}' has duplicated port {} in its ports list",
+                    server.name, port
+                ));
+            }
+        }
+
+        if server.server_names.is_empty() {
+            return Err(format!("Server '{}' has no server_name", server.name));
         }
 
         // Validate root directory exists
