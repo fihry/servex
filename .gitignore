@@ -4,7 +4,7 @@ Cargo.lock
 *.swo
 *~
 .DS_Store
-# /www
+/www
 /uploads
 example.web
 file.conf
