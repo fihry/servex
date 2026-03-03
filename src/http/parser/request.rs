@@ -6,7 +6,7 @@ use crate::http::parser::headers::parse_header_lines;
 #[derive(Debug)]
 pub enum RequestParseError {
     Incomplete,
-    Invalid(String),
+    Invalid(()),
     Chunked(ChunkedError),
 }
 
@@ -14,26 +14,26 @@ pub fn parse_request(buffer: &[u8]) -> Result<(Request, usize), RequestParseErro
     let header_end = find_header_end(buffer).ok_or(RequestParseError::Incomplete)?;
     let header_block = &buffer[..header_end];
     let header_text = std::str::from_utf8(header_block)
-        .map_err(|_| RequestParseError::Invalid("invalid header encoding".to_string()))?;
+        .map_err(|_| RequestParseError::Invalid(()))?;
 
     let mut lines = header_text.split("\r\n");
     let request_line = lines
         .next()
-        .ok_or_else(|| RequestParseError::Invalid("missing request line".to_string()))?;
+        .ok_or_else(|| RequestParseError::Invalid(()))?;
     let mut request_parts = request_line.split_whitespace();
     let method = request_parts
         .next()
-        .ok_or_else(|| RequestParseError::Invalid("missing method".to_string()))?;
+        .ok_or_else(|| RequestParseError::Invalid(()))?;
     let path = request_parts
         .next()
-        .ok_or_else(|| RequestParseError::Invalid("missing path".to_string()))?;
+        .ok_or_else(|| RequestParseError::Invalid(()))?;
     let version = request_parts
         .next()
-        .ok_or_else(|| RequestParseError::Invalid("missing version".to_string()))?;
+        .ok_or_else(|| RequestParseError::Invalid(()))?;
 
     let header_lines: Vec<&str> = lines.collect();
     let headers = parse_header_lines(&header_lines)
-        .map_err(|_| RequestParseError::Invalid("invalid headers".to_string()))?;
+        .map_err(|_| RequestParseError::Invalid(()))?;
 
     let body_start = header_end + 4;
     let mut consumed = body_start;
@@ -50,7 +50,7 @@ pub fn parse_request(buffer: &[u8]) -> Result<(Request, usize), RequestParseErro
         let length_value: usize = length
             .trim()
             .parse()
-            .map_err(|_| RequestParseError::Invalid("invalid content-length".to_string()))?;
+            .map_err(|_| RequestParseError::Invalid(()))?;
         if buffer.len() < body_start + length_value {
             return Err(RequestParseError::Incomplete);
         }
