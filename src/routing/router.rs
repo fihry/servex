@@ -7,6 +7,8 @@ use crate::config::{
 use crate::http::models::method::Method;
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
+
 pub enum RouteDecision {
     NotFound,
     MethodNotAllowed,
