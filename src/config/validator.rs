@@ -213,6 +213,17 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_global_invalid_timeout() {
+        let global = GlobalConfig {
+            max_body_size: 1024,
+            timeout: 0,
+            keep_alive: true,
+        };
+
+        assert!(ConfigValidator::validate_global(&global).is_err());
+    }
+
+    #[test]
     fn test_validate_route_invalid_method() {
         let route = Route {
             path: "/test".to_string(),

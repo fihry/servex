@@ -709,13 +709,17 @@ fn attach_session_cookie(
         })
     });
 
-    let session_id = match existing {
-        Some(id) => id,
-        None => generate_session_id(),
-    };
+    let valid_existing = existing
+        .as_ref()
+        .filter(|id| sessions.contains_key(*id))
+        .cloned();
+    let should_set_cookie = valid_existing.is_none();
+
+    let session_id = valid_existing
+        .unwrap_or_else(generate_session_id);
     sessions.insert(session_id.clone(), now);
 
-    if request.headers.get("cookie").is_none() {
+    if should_set_cookie {
         let mut value = format!("{}={}; Path=/; SameSite=Lax", cookie_name, session_id);
         if config.sessions.http_only() {
             value.push_str("; HttpOnly");
@@ -824,5 +828,126 @@ fn detect_content_type(path: &Path) -> &'static str {
         "txt" => "text/plain; charset=utf-8",
         "pdf" => "application/pdf",
         _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::models::headers::Headers;
+    use crate::http::models::method::Method;
+    use crate::http::models::request::Request;
+    use std::collections::HashMap;
+
+    fn make_config(session_data: &[(&str, &str)]) -> ServerConfig {
+        let mut config = ServerConfig::default();
+        let mut data = HashMap::new();
+        for (k, v) in session_data {
+            data.insert((*k).to_string(), (*v).to_string());
+        }
+        if !data.is_empty() {
+            config
+                .sessions
+                .inject(&data)
+                .expect("session config should be valid");
+        }
+        config
+    }
+
+    fn make_request(cookie: Option<&str>) -> Request {
+        let mut headers = Headers::new();
+        headers.insert("host", "localhost");
+        if let Some(value) = cookie {
+            headers.insert("cookie", value);
+        }
+        Request::new(
+            Method::Get,
+            "/ok".to_string(),
+            "HTTP/1.1".to_string(),
+            headers,
+            Vec::new(),
+        )
+    }
+
+    #[test]
+    fn session_cookie_not_added_when_sessions_disabled() {
+        let config = make_config(&[
+            ("enabled", "false"),
+            ("timeout", "60"),
+            ("cookie_name", "LOCALSERVER_SESSION"),
+            ("secure", "false"),
+            ("http_only", "true"),
+        ]);
+        let request = make_request(None);
+        let mut sessions = HashMap::new();
+        let mut response_headers = Vec::new();
+
+        attach_session_cookie(&config, &mut sessions, &request, &mut response_headers);
+
+        assert!(response_headers.is_empty());
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn session_cookie_uses_configured_name_and_flags() {
+        let config = make_config(&[
+            ("enabled", "true"),
+            ("timeout", "60"),
+            ("cookie_name", "MY_SESSION"),
+            ("secure", "true"),
+            ("http_only", "true"),
+        ]);
+        let request = make_request(None);
+        let mut sessions = HashMap::new();
+        let mut response_headers = Vec::new();
+
+        attach_session_cookie(&config, &mut sessions, &request, &mut response_headers);
+
+        assert_eq!(response_headers.len(), 1);
+        let (name, value) = &response_headers[0];
+        assert_eq!(name, "Set-Cookie");
+        assert!(value.starts_with("MY_SESSION="));
+        assert!(value.contains("; HttpOnly"));
+        assert!(value.contains("; Secure"));
+    }
+
+    #[test]
+    fn existing_cookie_keeps_session_without_new_set_cookie() {
+        let config = make_config(&[
+            ("enabled", "true"),
+            ("timeout", "60"),
+            ("cookie_name", "LOCALSERVER_SESSION"),
+            ("secure", "false"),
+            ("http_only", "true"),
+        ]);
+        let request = make_request(Some("LOCALSERVER_SESSION=abc123"));
+        let mut sessions = HashMap::new();
+        sessions.insert("abc123".to_string(), Instant::now());
+        let mut response_headers = Vec::new();
+
+        attach_session_cookie(&config, &mut sessions, &request, &mut response_headers);
+
+        assert!(response_headers.is_empty());
+        assert!(sessions.contains_key("abc123"));
+    }
+
+    #[test]
+    fn cookie_header_without_target_cookie_emits_set_cookie() {
+        let config = make_config(&[
+            ("enabled", "true"),
+            ("timeout", "60"),
+            ("cookie_name", "LOCALSERVER_SESSION"),
+            ("secure", "false"),
+            ("http_only", "true"),
+        ]);
+        let request = make_request(Some("OTHER=value"));
+        let mut sessions = HashMap::new();
+        let mut response_headers = Vec::new();
+
+        attach_session_cookie(&config, &mut sessions, &request, &mut response_headers);
+
+        assert_eq!(response_headers.len(), 1);
+        assert_eq!(response_headers[0].0, "Set-Cookie");
+        assert_eq!(sessions.len(), 1);
     }
 }
