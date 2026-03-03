@@ -249,4 +249,74 @@ mod tests {
         let err = ConfigLoader::parse_error_pages(&pages).expect_err("invalid code should fail");
         assert_eq!(err, "Invalid error code: abc");
     }
+
+    #[test]
+    fn parse_route_applies_defaults_when_optional_fields_missing() {
+        let route_data = kv(&[("path", "/ok")]);
+        let route = ConfigLoader::parse_route(&route_data).expect("route should parse");
+
+        assert_eq!(route.path, "/ok");
+        assert_eq!(route.methods, vec!["GET".to_string()]);
+        assert_eq!(route.index, None);
+        assert_eq!(route.autoindex, false);
+        assert!(route.redirect.is_none());
+    }
+
+    #[test]
+    fn parse_route_parses_redirect_and_cgi() {
+        let route_data = kv(&[
+            ("path", "/legacy"),
+            ("methods", "GET,POST"),
+            ("redirect_status", "302"),
+            ("redirect_target", "/new"),
+            ("cgi_extension", ".py"),
+            ("cgi_executor", "/usr/bin/python3"),
+        ]);
+        let route = ConfigLoader::parse_route(&route_data).expect("route should parse");
+
+        assert_eq!(route.methods, vec!["GET".to_string(), "POST".to_string()]);
+        assert_eq!(route.redirect.as_ref().map(|r| r.status), Some(302));
+        assert_eq!(
+            route.redirect.as_ref().map(|r| r.target.as_str()),
+            Some("/new")
+        );
+        assert_eq!(
+            route.cgi.as_ref().map(|cgi| cgi.extension.as_str()),
+            Some(".py")
+        );
+    }
+
+    #[test]
+    fn parse_route_rejects_invalid_redirect_status() {
+        let route_data = kv(&[
+            ("path", "/legacy"),
+            ("redirect_status", "abc"),
+            ("redirect_target", "/new"),
+        ]);
+
+        let err = ConfigLoader::parse_route(&route_data).expect_err("bad redirect should fail");
+        assert_eq!(err, "Invalid redirect status");
+    }
+
+    #[test]
+    fn build_config_attaches_route_to_single_server_even_with_name_mismatch() {
+        let mut sections = HashMap::new();
+        sections.insert(
+            "server:main".to_string(),
+            kv(&[
+                ("host", "127.0.0.1"),
+                ("server_name", "localhost"),
+                ("root", "./www"),
+            ]),
+        );
+        sections.insert(
+            "route:ghost:ok".to_string(),
+            kv(&[("path", "/ok"), ("methods", "GET")]),
+        );
+
+        let config = ConfigLoader::build_config(sections).expect("single-server fallback should work");
+        assert_eq!(config.servers.len(), 1);
+        assert_eq!(config.servers[0].routes.len(), 1);
+        assert_eq!(config.servers[0].routes[0].path, "/ok");
+    }
 }

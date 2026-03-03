@@ -1,0 +1,18 @@
+# 1) Download source
+cd /tmp
+wget https://download.joedog.org/siege/siege-latest.tar.gz
+
+tar -xzf siege-latest.tar.gz
+cd siege-*
+
+# 2) Build and install to ~/.local (no sudo)
+./configure --prefix="$HOME/.local"
+make -j"$(nproc)"
+make install
+
+# 3) Add to PATH (if needed)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# 4) Verify
+siege --version

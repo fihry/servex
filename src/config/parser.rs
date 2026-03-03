@@ -54,6 +54,8 @@ impl IniParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn test_parse_basic_ini() {
@@ -69,5 +71,32 @@ key3 = value3
         let result = IniParser::parse_str(content).unwrap();
         assert_eq!(result.get("section1").unwrap().get("key1").unwrap(), "value1");
         assert_eq!(result.get("section2").unwrap().get("key3").unwrap(), "value3");
+    }
+
+    #[test]
+    fn test_parse_rejects_key_value_outside_section() {
+        let content = "key = value";
+        let err = IniParser::parse_str(content).expect_err("must fail outside section");
+        assert_eq!(err, "Key-value pair at line 1 outside of section");
+    }
+
+    #[test]
+    fn test_parse_rejects_invalid_syntax_line() {
+        let content = "[s]\nnot-valid";
+        let err = IniParser::parse_str(content).expect_err("must fail on invalid line");
+        assert_eq!(err, "Invalid syntax at line 2: not-valid");
+    }
+
+    #[test]
+    fn test_parse_file_reports_read_error() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let missing = std::env::temp_dir().join(format!("servex_missing_conf_{nanos}.ini"));
+
+        let err = IniParser::parse_file(&missing).expect_err("missing file must fail");
+        assert!(err.starts_with("Failed to read config file: "));
+        let _ = fs::remove_file(missing);
     }
 }

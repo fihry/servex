@@ -1310,4 +1310,80 @@ mod tests {
         assert!(!root.join("a.txt").exists());
         let _ = fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn build_response_redirect_with_unknown_code_falls_back_to_302() {
+        let root = unique_path("redirect_fallback_root");
+        fs::create_dir_all(&root).expect("create root");
+        let mut route = make_route("/old", &["GET"]);
+        route.redirect = Some(Redirect {
+            status: 399,
+            target: "/new".to_string(),
+        });
+        let config = make_config_with_route(&root, route);
+        let router = Router::new(&config).expect("router");
+        let request = make_request_with(
+            Method::Get,
+            "/old",
+            "HTTP/1.1",
+            Vec::new(),
+            &[("host", "localhost")],
+        );
+        let mut sessions = HashMap::new();
+
+        let response = build_response(&config, &router, &[0], &mut sessions, &request, true);
+        assert!(status_line(&response).contains("302 Found"));
+        assert!(response_has_header(&response, "Location"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn build_error_response_uses_custom_error_page_when_present() {
+        let root = unique_path("custom_error_root");
+        fs::create_dir_all(&root).expect("create root");
+        let error_file = root.join("404.html");
+        fs::write(&error_file, "<h1>custom not found</h1>").expect("write error file");
+
+        let mut config = ServerConfig::default();
+        config.error_pages.insert(404, error_file);
+        let response = build_error_response(&config, Status::NOT_FOUND, false);
+        let text = String::from_utf8(response).expect("response should be text");
+
+        assert!(text.contains("404 Not Found"));
+        assert!(text.contains("custom not found"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn build_error_response_falls_back_when_error_page_cannot_be_read() {
+        let mut config = ServerConfig::default();
+        config
+            .error_pages
+            .insert(404, PathBuf::from("/tmp/does-not-exist-servex-404.html"));
+        let response = build_error_response(&config, Status::NOT_FOUND, false);
+        let text = String::from_utf8(response).expect("response should be text");
+
+        assert!(text.contains("<h1>404 Not Found</h1>"));
+    }
+
+    #[test]
+    fn status_from_code_maps_redirects_and_unknown_values() {
+        assert_eq!(status_from_code(301), Some(Status::MOVED_PERMANENTLY));
+        assert_eq!(status_from_code(302), Some(Status::FOUND));
+        assert_eq!(status_from_code(308), Some(Status::PERMANENT_REDIRECT));
+        assert_eq!(status_from_code(999), None);
+    }
+
+    #[test]
+    fn detect_content_type_returns_expected_values() {
+        assert_eq!(
+            detect_content_type(Path::new("index.html")),
+            "text/html; charset=utf-8"
+        );
+        assert_eq!(detect_content_type(Path::new("img.png")), "image/png");
+        assert_eq!(
+            detect_content_type(Path::new("unknown.blob")),
+            "application/octet-stream"
+        );
+    }
 }
