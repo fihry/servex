@@ -76,3 +76,33 @@ fn skip_crlf(body: &[u8], mut index: usize) -> usize {
     }
     index
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_empty_boundary() {
+        let err = parse_multipart(b"", "").expect_err("empty boundary should fail");
+        assert!(matches!(err, MultipartError::InvalidBoundary));
+    }
+
+    #[test]
+    fn rejects_part_with_invalid_headers() {
+        let body = b"--abc\r\nbroken-header\r\n\r\ncontent\r\n--abc--\r\n";
+        let err = parse_multipart(body, "abc").expect_err("invalid headers should fail");
+        assert!(matches!(err, MultipartError::InvalidHeaders));
+    }
+
+    #[test]
+    fn parses_multiple_parts() {
+        let body = b"--abc\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\none\r\n--abc\r\nContent-Disposition: form-data; name=\"b\"\r\n\r\ntwo\r\n--abc--\r\n";
+        let parts = parse_multipart(body, "abc").expect("multipart should parse");
+
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].data, b"one");
+        assert_eq!(parts[1].data, b"two");
+        assert!(parts[0].headers.get("content-disposition").is_some());
+        assert!(parts[1].headers.get("content-disposition").is_some());
+    }
+}

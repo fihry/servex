@@ -55,3 +55,44 @@ impl ResponseBuilder {
         response
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_sets_connection_close_and_content_length() {
+        let response = ResponseBuilder::new(
+            "HTTP/1.1",
+            "200 OK",
+            "text/plain",
+            b"hello".to_vec(),
+            false,
+            Vec::new(),
+        )
+        .build();
+        let text = String::from_utf8(response).expect("response should be utf8");
+
+        assert!(text.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(text.contains("Content-Length: 5\r\n"));
+        assert!(text.contains("Connection: close\r\n"));
+        assert!(text.ends_with("\r\n\r\nhello"));
+    }
+
+    #[test]
+    fn build_includes_extra_headers() {
+        let response = ResponseBuilder::new(
+            "HTTP/1.1",
+            "302 Found",
+            "text/plain",
+            Vec::new(),
+            true,
+            vec![("Location".to_string(), "/new".to_string())],
+        )
+        .build();
+        let text = String::from_utf8(response).expect("response should be utf8");
+
+        assert!(text.contains("Location: /new\r\n"));
+        assert!(text.contains("Connection: keep-alive\r\n"));
+    }
+}

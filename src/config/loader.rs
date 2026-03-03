@@ -168,3 +168,85 @@ impl ConfigLoader {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn kv(values: &[(&str, &str)]) -> HashMap<String, String> {
+        let mut out = HashMap::new();
+        for (k, v) in values {
+            out.insert((*k).to_string(), (*v).to_string());
+        }
+        out
+    }
+
+    #[test]
+    fn build_config_errors_when_no_server_sections_exist() {
+        let mut sections = HashMap::new();
+        sections.insert("global".to_string(), kv(&[("timeout", "10")]));
+
+        let err = ConfigLoader::build_config(sections).expect_err("expected missing server error");
+        assert_eq!(err, "No server sections found");
+    }
+
+    #[test]
+    fn build_config_rejects_invalid_route_section_format() {
+        let mut sections = HashMap::new();
+        sections.insert(
+            "server:main".to_string(),
+            kv(&[
+                ("host", "127.0.0.1"),
+                ("server_name", "localhost"),
+                ("root", "./www"),
+            ]),
+        );
+        sections.insert(
+            "route:main".to_string(),
+            kv(&[("path", "/x"), ("methods", "GET")]),
+        );
+
+        let err =
+            ConfigLoader::build_config(sections).expect_err("invalid route section should fail");
+        assert_eq!(err, "Invalid route section 'route:main'");
+    }
+
+    #[test]
+    fn build_config_rejects_route_referencing_unknown_server_when_many_servers() {
+        let mut sections = HashMap::new();
+        sections.insert(
+            "server:one".to_string(),
+            kv(&[
+                ("host", "127.0.0.1"),
+                ("server_name", "one.local"),
+                ("root", "./www"),
+            ]),
+        );
+        sections.insert(
+            "server:two".to_string(),
+            kv(&[
+                ("host", "127.0.0.1"),
+                ("server_name", "two.local"),
+                ("root", "./www"),
+            ]),
+        );
+        sections.insert(
+            "route:ghost:home".to_string(),
+            kv(&[("path", "/"), ("methods", "GET")]),
+        );
+
+        let err = ConfigLoader::build_config(sections)
+            .expect_err("unknown server route reference should fail");
+        assert_eq!(
+            err,
+            "Route section 'route:ghost:home' references unknown server 'ghost'"
+        );
+    }
+
+    #[test]
+    fn parse_error_pages_rejects_non_numeric_code() {
+        let pages = kv(&[("abc", "error_pages/404.html")]);
+        let err = ConfigLoader::parse_error_pages(&pages).expect_err("invalid code should fail");
+        assert_eq!(err, "Invalid error code: abc");
+    }
+}

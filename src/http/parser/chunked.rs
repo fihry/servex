@@ -42,3 +42,29 @@ fn find_crlf(buffer: &[u8], start: usize) -> Option<usize> {
         .position(|window| window == b"\r\n")
         .map(|pos| start + pos)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_invalid_chunk_size() {
+        let body = b"Z\r\nhello\r\n0\r\n\r\n";
+        let err = decode_chunked(body).expect_err("chunk size should be invalid");
+        assert!(matches!(err, ChunkedError::InvalidSize));
+    }
+
+    #[test]
+    fn rejects_invalid_chunk_format_without_trailing_crlf() {
+        let body = b"5\r\nhelloX0\r\n\r\n";
+        let err = decode_chunked(body).expect_err("format should be invalid");
+        assert!(matches!(err, ChunkedError::InvalidFormat));
+    }
+
+    #[test]
+    fn reports_incomplete_when_last_chunk_terminator_missing() {
+        let body = b"5\r\nhello\r\n0\r\n";
+        let err = decode_chunked(body).expect_err("body should be incomplete");
+        assert!(matches!(err, ChunkedError::Incomplete));
+    }
+}

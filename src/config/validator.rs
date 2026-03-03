@@ -200,6 +200,18 @@ impl ConfigValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_path(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("servex_validator_{prefix}_{nanos}"))
+    }
 
     #[test]
     fn test_validate_global_invalid_body_size() {
@@ -255,5 +267,114 @@ mod tests {
         };
 
         assert!(ConfigValidator::validate_route(&route).is_err());
+    }
+
+    #[test]
+    fn test_validate_server_duplicate_ports_rejected() {
+        let root = unique_path("dup_ports_root");
+        fs::create_dir_all(&root).expect("failed to create root");
+
+        let server = Server {
+            name: "main".to_string(),
+            server_names: vec!["localhost".to_string()],
+            host: "127.0.0.1".to_string(),
+            ports: vec![8080, 8080],
+            root: root.clone(),
+            routes: vec![],
+        };
+
+        let err = ConfigValidator::validate_server(&server).expect_err("duplicate ports must fail");
+        assert!(err.contains("duplicated port 8080"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_validate_server_missing_root_directory() {
+        let server = Server {
+            name: "main".to_string(),
+            server_names: vec!["localhost".to_string()],
+            host: "127.0.0.1".to_string(),
+            ports: vec![8080],
+            root: unique_path("missing_root"),
+            routes: vec![],
+        };
+
+        let err = ConfigValidator::validate_server(&server).expect_err("missing root should fail");
+        assert!(err.contains("root directory does not exist"));
+    }
+
+    #[test]
+    fn test_validate_route_rejects_cgi_extension_without_dot() {
+        let route = Route {
+            path: "/cgi".to_string(),
+            methods: vec!["GET".to_string()],
+            root: None,
+            index: None,
+            redirect: None,
+            cgi: Some(CgiConfig {
+                extension: "py".to_string(),
+                executor: PathBuf::from("/bin/sh"),
+            }),
+            upload_dir: None,
+            autoindex: false,
+            max_file_size: None,
+        };
+
+        let err = ConfigValidator::validate_route(&route).expect_err("bad cgi extension must fail");
+        assert!(err.contains("must start with '.'"));
+    }
+
+    #[test]
+    fn test_validate_route_rejects_missing_cgi_executor() {
+        let route = Route {
+            path: "/cgi".to_string(),
+            methods: vec!["GET".to_string()],
+            root: None,
+            index: None,
+            redirect: None,
+            cgi: Some(CgiConfig {
+                extension: ".py".to_string(),
+                executor: unique_path("missing_executor"),
+            }),
+            upload_dir: None,
+            autoindex: false,
+            max_file_size: None,
+        };
+
+        let err = ConfigValidator::validate_route(&route).expect_err("missing cgi executor must fail");
+        assert!(err.contains("CGI executor not found"));
+    }
+
+    #[test]
+    fn test_validate_route_rejects_invalid_redirect_status() {
+        let route = Route {
+            path: "/old".to_string(),
+            methods: vec!["GET".to_string()],
+            root: None,
+            index: None,
+            redirect: Some(Redirect {
+                status: 309,
+                target: "/new".to_string(),
+            }),
+            cgi: None,
+            upload_dir: None,
+            autoindex: false,
+            max_file_size: None,
+        };
+
+        let err = ConfigValidator::validate_route(&route).expect_err("invalid redirect should fail");
+        assert!(err.contains("Invalid redirect status 309"));
+    }
+
+    #[test]
+    fn test_validate_error_pages_rejects_non_file_path() {
+        let dir = unique_path("error_pages_dir");
+        fs::create_dir_all(&dir).expect("failed to create temp dir");
+        let mut pages = HashMap::new();
+        pages.insert(404u16, dir.clone());
+
+        let err = ConfigValidator::validate_error_pages(&pages).expect_err("directory path should fail");
+        assert!(err.contains("is not a file"));
+        let _ = fs::remove_dir_all(dir);
     }
 }

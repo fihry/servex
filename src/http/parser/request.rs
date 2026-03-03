@@ -123,4 +123,27 @@ mod tests {
         let error = parse_request(raw).expect_err("request should be incomplete");
         assert!(matches!(error, RequestParseError::Incomplete));
     }
+
+    #[test]
+    fn rejects_invalid_content_length_value() {
+        let raw = b"POST /x HTTP/1.1\r\nContent-Length: nope\r\n\r\nabc";
+        let error = parse_request(raw).expect_err("request should fail");
+        assert!(matches!(error, RequestParseError::Invalid(_)));
+    }
+
+    #[test]
+    fn rejects_invalid_utf8_header_block() {
+        let raw = b"GET /x HTTP/1.1\r\nHost: \xFF\r\n\r\n";
+        let error = parse_request(raw).expect_err("request should fail");
+        assert!(matches!(error, RequestParseError::Invalid(_)));
+    }
+
+    #[test]
+    fn uses_chunked_when_transfer_encoding_present_even_with_content_length() {
+        let raw = b"POST /chunk HTTP/1.1\r\nHost: localhost\r\nContent-Length: 999\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n";
+        let (request, consumed) = parse_request(raw).expect("chunked request should parse");
+
+        assert_eq!(request.body, b"hello");
+        assert_eq!(consumed, raw.len());
+    }
 }

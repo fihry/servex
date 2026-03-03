@@ -137,3 +137,130 @@ fn normalized_host_from_header(raw_host: &str) -> Option<&str> {
     }
     Some(host)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::models::{Redirect, Route};
+    use crate::config::server::Server;
+
+    fn make_route(path: &str, methods: &[&str]) -> Route {
+        Route {
+            path: path.to_string(),
+            methods: methods.iter().map(|m| (*m).to_string()).collect(),
+            root: None,
+            index: None,
+            redirect: None,
+            cgi: None,
+            upload_dir: None,
+            autoindex: false,
+            max_file_size: None,
+        }
+    }
+
+    fn make_server(name: &str, server_names: &[&str], routes: Vec<Route>) -> Server {
+        Server {
+            name: name.to_string(),
+            server_names: server_names.iter().map(|v| (*v).to_string()).collect(),
+            host: "127.0.0.1".to_string(),
+            ports: vec![8080],
+            root: PathBuf::from("/tmp"),
+            routes,
+        }
+    }
+
+    #[test]
+    fn select_server_uses_case_insensitive_host_with_port() {
+        let router = Router {
+            servers: vec![
+                make_server("one", &["example.com"], vec![]),
+                make_server("two", &["api.local"], vec![]),
+            ],
+        };
+
+        let selected = router
+            .select_server(&[0, 1], Some("API.LOCAL:8080"))
+            .expect("server should be selected");
+        assert_eq!(selected.name, "two");
+    }
+
+    #[test]
+    fn select_server_falls_back_to_first_candidate() {
+        let router = Router {
+            servers: vec![
+                make_server("first", &["first.local"], vec![]),
+                make_server("second", &["second.local"], vec![]),
+            ],
+        };
+
+        let selected = router
+            .select_server(&[1, 0], Some("unknown.local"))
+            .expect("fallback server should be selected");
+        assert_eq!(selected.name, "second");
+    }
+
+    #[test]
+    fn resolve_uses_longest_matching_prefix_route() {
+        let short = make_route("/api", &["GET"]);
+        let mut long = make_route("/api/v1", &["GET"]);
+        long.autoindex = true;
+        let server = make_server("s", &["localhost"], vec![short, long]);
+        let router = Router {
+            servers: vec![server.clone()],
+        };
+
+        let decision = router.resolve(&server, "/api/v1/users", &Method::Get);
+        match decision {
+            RouteDecision::Matched { route_path, autoindex, .. } => {
+                assert_eq!(route_path, "/api/v1");
+                assert!(autoindex);
+            }
+            other => panic!("expected matched route, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_returns_method_not_allowed_when_method_not_in_route() {
+        let route = make_route("/upload", &["POST"]);
+        let server = make_server("s", &["localhost"], vec![route]);
+        let router = Router {
+            servers: vec![server.clone()],
+        };
+
+        let decision = router.resolve(&server, "/upload", &Method::Get);
+        assert!(matches!(decision, RouteDecision::MethodNotAllowed));
+    }
+
+    #[test]
+    fn resolve_returns_redirect_when_route_has_redirect() {
+        let mut route = make_route("/old", &["GET"]);
+        route.redirect = Some(Redirect {
+            status: 301,
+            target: "/new".to_string(),
+        });
+        let server = make_server("s", &["localhost"], vec![route]);
+        let router = Router {
+            servers: vec![server.clone()],
+        };
+
+        let decision = router.resolve(&server, "/old", &Method::Get);
+        match decision {
+            RouteDecision::Redirect { status, target } => {
+                assert_eq!(status, 301);
+                assert_eq!(target, "/new");
+            }
+            other => panic!("expected redirect, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_returns_not_found_when_no_route_matches() {
+        let server = make_server("s", &["localhost"], vec![make_route("/ok", &["GET"])]);
+        let router = Router {
+            servers: vec![server.clone()],
+        };
+
+        let decision = router.resolve(&server, "/missing", &Method::Get);
+        assert!(matches!(decision, RouteDecision::NotFound));
+    }
+}
