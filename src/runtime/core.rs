@@ -32,7 +32,6 @@ pub(super) fn should_keep_alive(config: &ServerConfig, version: &str, request: &
 pub(super) fn build_response(
     config: &ServerConfig,
     router: &Router,
-    server_candidates: &[usize],
     sessions: &mut HashMap<String, Instant>,
     request: &Request,
     keep_alive: bool,
@@ -46,10 +45,7 @@ pub(super) fn build_response(
     }
 
     let clean_path = strip_query(&request.path);
-    let server = match router.select_server(server_candidates, request.headers.get("host")) {
-        Some(server) => server,
-        None => return build_error_response(config, Status::INTERNAL_SERVER_ERROR, keep_alive),
-    };
+    let server = router.select_server(request.headers.get("host"));
 
     match router.resolve(server, clean_path, &request.method) {
         RouteDecision::NotFound => build_error_response(config, Status::NOT_FOUND, keep_alive),

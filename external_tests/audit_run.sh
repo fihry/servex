@@ -104,12 +104,8 @@ chunked_output="$(printf 'chunked-cgi' | curl -sS --noproxy '*' -H 'Transfer-Enc
 pass "CGI with chunked body works"
 
 main_body="$(curl -sS --noproxy '*' --resolve test.com:8080:127.0.0.1 http://test.com:8080/)"
-[[ "$main_body" == *"Servex Home"* ]] || fail "Virtual host main response mismatch"
-pass "Hostname virtual host (main) works"
-
-blog_body="$(curl -sS --noproxy '*' --resolve blog.test:8080:127.0.0.1 http://blog.test:8080/)"
-[[ "$blog_body" == *"Blog Server"* ]] || fail "Virtual host blog response mismatch"
-pass "Hostname virtual host (blog) works"
+[[ "$main_body" == *"Servex Home"* ]] || fail "Hostname response mismatch"
+pass "Hostname routing works for single server"
 
 cookie_header="$(curl -sS -D - --noproxy '*' http://127.0.0.1:8080/ok -o /dev/null | tr -d '\r' | sed -n 's/^Set-Cookie: //p' | head -n1)"
 [[ "$cookie_header" == *"LOCALSERVER_SESSION="* ]] || fail "Session cookie missing"

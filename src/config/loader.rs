@@ -16,6 +16,7 @@ impl ConfigLoader {
         sections: HashMap<String, HashMap<String, String>>
     ) -> Result<ServerConfig, String> {
         let mut config: ServerConfig = ServerConfig::default();
+        let mut configured_server: Option<Server> = None;
         // Parse global config
         if let Some(global) = sections.get("global") {
             config.global = Self::parse_global(global)?;
@@ -26,8 +27,6 @@ impl ConfigLoader {
             config.error_pages = Self::parse_error_pages(errors)?;
         }
 
-
-
         for (section_name, section_data) in &sections {
             if section_name == "session" {
                 config.sessions.inject(section_data)?;
@@ -35,44 +34,37 @@ impl ConfigLoader {
             }
 
             if section_name == "server" {
+                if configured_server.is_some() {
+                    return Err("Only one server section is supported".to_string());
+                }
                 let mut server = Server::default();
                 server.inject("default", section_data)?;
-                config.servers.push(server);
+                configured_server = Some(server);
                 continue;
             }
 
             if let Some(server_name) = section_name.strip_prefix("server:") {
+                if configured_server.is_some() {
+                    return Err("Only one server section is supported".to_string());
+                }
                 let mut server = Server::default();
                 server.inject(server_name, section_data)?;
-                config.servers.push(server);
+                configured_server = Some(server);
             }
         }
 
-        if config.servers.is_empty() {
+        if configured_server.is_none() {
             return Err("No server sections found".to_string());
         }
+        config.server = configured_server.expect("checked is_some");
 
         for (section_name, section_data) in &sections {
             if let Some(route_path) = section_name.strip_prefix("route:") {
-                let (server_name, _) = match route_path.split_once(':') {
-                    Some(parts) => parts,
-                    None => return Err(format!("Invalid route section '{}'", section_name)),
-                };
-                let route = Self::parse_route(section_data)?;
-                if let Some(server) = config
-                    .servers
-                    .iter_mut()
-                    .find(|server| server.name == server_name)
-                {
-                    server.routes.push(route);
-                } else if config.servers.len() == 1 {
-                    config.servers[0].routes.push(route);
-                } else {
-                    return Err(format!(
-                        "Route section '{}' references unknown server '{}'",
-                        section_name, server_name
-                    ));
+                if route_path.trim().is_empty() {
+                    return Err(format!("Invalid route section '{}'", section_name));
                 }
+                let route = Self::parse_route(section_data)?;
+                config.server.routes.push(route);
             }
         }
 
@@ -206,13 +198,14 @@ mod tests {
             kv(&[("path", "/x"), ("methods", "GET")]),
         );
 
-        let err =
-            ConfigLoader::build_config(sections).expect_err("invalid route section should fail");
-        assert_eq!(err, "Invalid route section 'route:main'");
+        let config =
+            ConfigLoader::build_config(sections).expect("single route section should be accepted");
+        assert_eq!(config.server.routes.len(), 1);
+        assert_eq!(config.server.routes[0].path, "/x");
     }
 
     #[test]
-    fn build_config_rejects_route_referencing_unknown_server_when_many_servers() {
+    fn build_config_rejects_multiple_server_sections() {
         let mut sections = HashMap::new();
         sections.insert(
             "server:one".to_string(),
@@ -230,17 +223,9 @@ mod tests {
                 ("root", "./www"),
             ]),
         );
-        sections.insert(
-            "route:ghost:home".to_string(),
-            kv(&[("path", "/"), ("methods", "GET")]),
-        );
-
-        let err = ConfigLoader::build_config(sections)
-            .expect_err("unknown server route reference should fail");
-        assert_eq!(
-            err,
-            "Route section 'route:ghost:home' references unknown server 'ghost'"
-        );
+        let err =
+            ConfigLoader::build_config(sections).expect_err("multiple servers should fail");
+        assert_eq!(err, "Only one server section is supported");
     }
 
     #[test]
@@ -315,8 +300,7 @@ mod tests {
         );
 
         let config = ConfigLoader::build_config(sections).expect("single-server fallback should work");
-        assert_eq!(config.servers.len(), 1);
-        assert_eq!(config.servers[0].routes.len(), 1);
-        assert_eq!(config.servers[0].routes[0].path, "/ok");
+        assert_eq!(config.server.routes.len(), 1);
+        assert_eq!(config.server.routes[0].path, "/ok");
     }
 }

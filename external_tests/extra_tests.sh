@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-HOST="${HOST:-127.0.0.2}"
+HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8080}"
 BASE_URL="http://${HOST}:${PORT}"
 APP_CONF="$ROOT_DIR/application.conf"
