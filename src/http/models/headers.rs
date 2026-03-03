@@ -20,14 +20,6 @@ impl Headers {
     pub fn get(&self, key: &str) -> Option<&str> {
         self.headers.get(&normalize_key(key)).map(|value| value.as_str())
     }
-
-    pub fn contains(&self, key: &str) -> bool {
-        self.headers.contains_key(&normalize_key(key))
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &String)> {
-        self.headers.iter()
-    }
 }
 
 fn normalize_key(key: &str) -> String {
