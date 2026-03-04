@@ -90,7 +90,7 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
         next_token += 1;
         poll.registry()
             .register(&mut listener, token, Interest::READABLE)
-            .map_err(|e| format!("failed to register listener {}: {}", addr, e))?;
+            .map_err(|e: std::io::Error| format!("failed to register listener {}: {}", addr, e))?;
         listeners.insert(
             token,
             ListenerEntry {
@@ -106,13 +106,16 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
         for event in &events {
             let token = event.token();
             if listeners.contains_key(&token) {
-                accept_clients(
+                match accept_clients(
                     &mut listeners,
                     &mut connections,
                     poll.registry(),
                     token,
                     &mut next_token,
-                )?;
+                ){
+                    Ok(_) => {},
+                    Err(err) => println!("error accepting the clients: {:?}\nerr: {:?}", token, err),
+                };
                 continue;
             }
 
