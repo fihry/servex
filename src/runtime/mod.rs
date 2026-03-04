@@ -21,7 +21,7 @@ mod session {
 #[cfg(test)]
 mod tests;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{ErrorKind, Read, Write};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
@@ -41,6 +41,7 @@ const READ_BUFFER_SIZE: usize = 8 * 1024;
 
 struct Connection {
     socket: TcpStream,
+    server_candidates: Vec<usize>,
     read_buf: Vec<u8>,
     write_buf: Vec<u8>,
     close_after_write: bool,
@@ -50,12 +51,14 @@ struct Connection {
 
 struct ListenerEntry {
     listener: TcpListener,
+    server_candidates: Vec<usize>,
 }
 
 impl Connection {
-    fn new(socket: TcpStream) -> Self {
+    fn new(socket: TcpStream, server_candidates: Vec<usize>) -> Self {
         Self {
             socket,
+            server_candidates,
             read_buf: Vec::new(),
             write_buf: Vec::new(),
             close_after_write: false,
@@ -75,15 +78,20 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
     let mut next_token = 0usize;
     let mut sessions = HashMap::<String, Instant>::new();
 
-    let mut listeners_by_addr: HashSet<SocketAddr> = HashSet::new();
-    for port in &config.server.ports {
-        let addr: SocketAddr = format!("{}:{}", config.server.host, port)
-            .parse()
-            .map_err(|e| format!("invalid listener addr for {}:{}: {}", config.server.host, port, e))?;
-        listeners_by_addr.insert(addr);
+    let mut listeners_by_addr: HashMap<SocketAddr, Vec<usize>> = HashMap::new();
+    for (server_index, server) in config.servers.iter().enumerate() {
+        for port in &server.ports {
+            let addr: SocketAddr = format!("{}:{}", server.host, port)
+                .parse()
+                .map_err(|e| format!("invalid listener addr for {}:{}: {}", server.host, port, e))?;
+            listeners_by_addr
+                .entry(addr)
+                .or_default()
+                .push(server_index);
+        }
     }
 
-    for addr in listeners_by_addr {
+    for (addr, server_candidates) in listeners_by_addr {
         let mut listener =
             TcpListener::bind(addr).map_err(|e| format!("failed to bind {}: {}", addr, e))?;
         let token = Token(next_token);
@@ -95,6 +103,7 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
             token,
             ListenerEntry {
                 listener,
+                server_candidates,
             },
         );
     }
@@ -106,16 +115,13 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
         for event in &events {
             let token = event.token();
             if listeners.contains_key(&token) {
-                match accept_clients(
+                accept_clients(
                     &mut listeners,
                     &mut connections,
                     poll.registry(),
                     token,
                     &mut next_token,
-                ){
-                    Ok(_) => {},
-                    Err(err) => println!("error accepting the clients: {:?}\nerr: {:?}", token, err),
-                };
+                )?;
                 continue;
             }
 
@@ -187,7 +193,10 @@ fn accept_clients(
                 registry
                     .register(&mut stream, token, Interest::READABLE)
                     .map_err(|e| format!("failed to register connection: {}", e))?;
-                connections.insert(token, Connection::new(stream));
+                connections.insert(
+                    token,
+                    Connection::new(stream, entry.server_candidates.clone()),
+                );
             }
             Err(err) if err.kind() == ErrorKind::WouldBlock => break,
             Err(err) => {
@@ -228,6 +237,7 @@ fn read_from_client(
                 let response = build_response(
                     config,
                     router,
+                    &conn.server_candidates,
                     sessions,
                     &request,
                     keep_alive,

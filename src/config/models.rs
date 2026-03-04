@@ -6,7 +6,7 @@ use std::{fmt, usize};
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub global: GlobalConfig,
-    pub server: Server,
+    pub servers: Vec<Server>,
     pub error_pages: HashMap<u16, PathBuf>,
     pub sessions: Session,
 }
@@ -57,7 +57,7 @@ impl ServerConfig {
     pub fn default() -> Self {
         Self {
             global: GlobalConfig::default(),
-            server: Server::default(),
+            servers: Vec::new(),
             error_pages: HashMap::new(),
             sessions: Session::default(),
         }
@@ -228,8 +228,10 @@ impl fmt::Display for ServerConfig {
                 writeln!(f, "\t{} => {}", code, path.display())?;
             }
         }
-        writeln!(f, "Server:")?;
-        writeln!(f, "\t{}", self.server)?;
+        writeln!(f, "Servers:")?;
+        for server in &self.servers {
+            writeln!(f, "\t{}", server)?;
+        }
 
         Ok(())
     }

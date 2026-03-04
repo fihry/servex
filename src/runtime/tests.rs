@@ -96,14 +96,14 @@ fn make_config_with_route(root: &Path, route: Route) -> ServerConfig {
             ("http_only".to_string(), "true".to_string()),
         ]))
         .expect("session config");
-    config.server = Server {
+    config.servers.push(Server {
         name: "main".to_string(),
         server_names: vec!["localhost".to_string()],
         host: "127.0.0.1".to_string(),
         ports: vec![8080],
         root: root.to_path_buf(),
         routes: vec![route],
-    };
+    });
     config
 }
 
@@ -362,7 +362,7 @@ fn build_response_rejects_http11_request_without_host() {
     let request = make_request_with(Method::Get, "/x", "HTTP/1.1", Vec::new(), &[]);
     let mut sessions = HashMap::new();
 
-    let response = build_response(&config, &router, &mut sessions, &request, false);
+    let response = build_response(&config, &router, &[], &mut sessions, &request, false);
     assert!(status_line(&response).contains("400 Bad Request"));
     let _ = fs::remove_dir_all(root);
 }
@@ -383,7 +383,7 @@ fn build_response_applies_global_max_body_size() {
     );
     let mut sessions = HashMap::new();
 
-    let response = build_response(&config, &router, &mut sessions, &request, false);
+    let response = build_response(&config, &router, &[], &mut sessions, &request, false);
     assert!(status_line(&response).contains("413 Payload Too Large"));
     let _ = fs::remove_dir_all(root);
 }
@@ -440,7 +440,7 @@ fn build_response_redirect_contains_location_header() {
     );
     let mut sessions = HashMap::new();
 
-    let response = build_response(&config, &router, &mut sessions, &request, true);
+    let response = build_response(&config, &router, &[0], &mut sessions, &request, true);
     assert!(status_line(&response).contains("301 Moved Permanently"));
     assert!(response_has_header(&response, "Location"));
     let _ = fs::remove_dir_all(root);
@@ -464,7 +464,7 @@ fn build_response_head_method_allowed_by_route_still_returns_405() {
     );
     let mut sessions = HashMap::new();
 
-    let response = build_response(&config, &router, &mut sessions, &request, false);
+    let response = build_response(&config, &router, &[0], &mut sessions, &request, false);
     assert!(status_line(&response).contains("405 Method Not Allowed"));
     let _ = fs::remove_dir_all(root);
 }
@@ -494,7 +494,7 @@ fn build_response_delete_existing_file_returns_204() {
         &[("host", "localhost")],
     );
     let mut sessions = HashMap::new();
-    let response = build_response(&config, &router, &mut sessions, &request, false);
+    let response = build_response(&config, &router, &[0], &mut sessions, &request, false);
 
     assert!(status_line(&response).contains("204 No Content"));
     assert!(!root.join("a.txt").exists());
@@ -521,7 +521,7 @@ fn build_response_redirect_with_unknown_code_falls_back_to_302() {
     );
     let mut sessions = HashMap::new();
 
-    let response = build_response(&config, &router, &mut sessions, &request, true);
+    let response = build_response(&config, &router, &[0], &mut sessions, &request, true);
     assert!(status_line(&response).contains("302 Found"));
     assert!(response_has_header(&response, "Location"));
     let _ = fs::remove_dir_all(root);

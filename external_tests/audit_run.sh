@@ -35,12 +35,41 @@ require() {
 require curl
 require python3
 
+port_in_use() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn "( sport = :${port} )" | grep -q LISTEN
+    return $?
+  fi
+  python3 - "$port" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    s.bind(("127.0.0.1", port))
+except OSError:
+    sys.exit(0)
+finally:
+    s.close()
+sys.exit(1)
+PY
+}
+
+if port_in_use 8080; then
+  fail "Port 8080 is already in use. Stop the existing server/process and retry."
+fi
+
 cargo run --quiet > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" >/dev/null 2>&1 || true; restore' EXIT
 
 ready=0
 for _ in $(seq 1 40); do
+  if ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
+    fail "Server failed to stay running (see $SERVER_LOG)"
+  fi
   if curl -sS --noproxy '*' http://127.0.0.1:8080/ >/dev/null 2>&1; then
     ready=1
     break
@@ -48,6 +77,7 @@ for _ in $(seq 1 40); do
   sleep 0.25
 done
 [[ "$ready" -eq 1 ]] || fail "Server failed to start (see $SERVER_LOG)"
+kill -0 "$SERVER_PID" >/dev/null 2>&1 || fail "Server failed to stay running (see $SERVER_LOG)"
 
 code="$(curl -sS -o "$TEST_BODY" -w "%{http_code}" --noproxy '*' http://127.0.0.1:8080/ok)"
 [[ "$code" == "200" ]] || fail "GET /ok expected 200 got $code"
@@ -104,8 +134,12 @@ chunked_output="$(printf 'chunked-cgi' | curl -sS --noproxy '*' -H 'Transfer-Enc
 pass "CGI with chunked body works"
 
 main_body="$(curl -sS --noproxy '*' --resolve test.com:8080:127.0.0.1 http://test.com:8080/)"
-[[ "$main_body" == *"Servex Home"* ]] || fail "Hostname response mismatch"
-pass "Hostname routing works for single server"
+[[ "$main_body" == *"Servex Home"* ]] || fail "Virtual host main response mismatch"
+pass "Hostname virtual host (main) works"
+
+blog_body="$(curl -sS --noproxy '*' --resolve blog.test:8080:127.0.0.1 http://blog.test:8080/)"
+[[ "$blog_body" == *"Blog Server"* ]] || fail "Virtual host blog response mismatch"
+pass "Hostname virtual host (blog) works"
 
 cookie_header="$(curl -sS -D - --noproxy '*' http://127.0.0.1:8080/ok -o /dev/null | tr -d '\r' | sed -n 's/^Set-Cookie: //p' | head -n1)"
 [[ "$cookie_header" == *"LOCALSERVER_SESSION="* ]] || fail "Session cookie missing"

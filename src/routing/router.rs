@@ -31,29 +31,51 @@ pub enum RouteDecision {
 
 #[derive(Clone)]
 pub struct Router {
-    server: Server,
+    servers: Vec<Server>,
 }
 
 impl Router {
     pub fn new(config: &ServerConfig) -> Result<Self, String> {
         Ok(Self {
-            server: config.server.clone(),
+            servers: config.servers.clone(),
         })
     }
 
-    pub fn select_server(&self, host_header: Option<&str>) -> &Server {
+    pub fn select_server<'a>(
+        &'a self,
+        candidate_servers: &[usize],
+        host_header: Option<&str>,
+    ) -> Option<&'a Server> {
+        if candidate_servers.is_empty() {
+            return None;
+        }
+
         if let Some(host) = host_header.and_then(normalized_host_from_header) {
-            if self
-                .server
-                .server_names
-                .iter()
-                .any(|name| name.eq_ignore_ascii_case(host))
-            {
-                return &self.server;
+            for index in candidate_servers {
+                if let Some(server) = self.servers.get(*index) {
+                    if server
+                        .server_names
+                        .iter()
+                        .any(|name| name.eq_ignore_ascii_case(host))
+                    {
+                        return Some(server);
+                    }
+                }
+            }
+
+            // Fallback: if candidate mapping misses a virtual host due config/listener
+            // ordering, still honor explicit Host header.
+            if let Some(server) = self.servers.iter().find(|server| {
+                server
+                    .server_names
+                    .iter()
+                    .any(|name| name.eq_ignore_ascii_case(host))
+            }) {
+                return Some(server);
             }
         }
 
-        &self.server
+        self.servers.get(candidate_servers[0])
     }
 
     pub fn resolve(&self, server: &Server, request_path: &str, method: &Method) -> RouteDecision {
@@ -161,23 +183,46 @@ mod tests {
     #[test]
     fn select_server_uses_case_insensitive_host_with_port() {
         let router = Router {
-            server: make_server("one", &["api.local"], vec![]),
+            servers: vec![
+                make_server("one", &["example.com"], vec![]),
+                make_server("two", &["api.local"], vec![]),
+            ],
         };
 
         let selected = router
-            .select_server(Some("API.LOCAL:8080"));
-        assert_eq!(selected.name, "one");
+            .select_server(&[0, 1], Some("API.LOCAL:8080"))
+            .expect("server should be selected");
+        assert_eq!(selected.name, "two");
     }
 
     #[test]
-    fn select_server_falls_back_when_host_does_not_match() {
+    fn select_server_falls_back_to_first_candidate() {
         let router = Router {
-            server: make_server("first", &["first.local"], vec![]),
+            servers: vec![
+                make_server("first", &["first.local"], vec![]),
+                make_server("second", &["second.local"], vec![]),
+            ],
         };
 
         let selected = router
-            .select_server(Some("unknown.local"));
-        assert_eq!(selected.name, "first");
+            .select_server(&[1, 0], Some("unknown.local"))
+            .expect("fallback server should be selected");
+        assert_eq!(selected.name, "second");
+    }
+
+    #[test]
+    fn select_server_can_match_host_outside_candidate_list() {
+        let router = Router {
+            servers: vec![
+                make_server("main", &["main.local"], vec![]),
+                make_server("blog", &["blog.test"], vec![]),
+            ],
+        };
+
+        let selected = router
+            .select_server(&[0], Some("blog.test:8080"))
+            .expect("host match should select blog");
+        assert_eq!(selected.name, "blog");
     }
 
     #[test]
@@ -187,7 +232,7 @@ mod tests {
         long.autoindex = true;
         let server = make_server("s", &["localhost"], vec![short, long]);
         let router = Router {
-            server: server.clone(),
+            servers: vec![server.clone()],
         };
 
         let decision = router.resolve(&server, "/api/v1/users", &Method::Get);
@@ -205,7 +250,7 @@ mod tests {
         let route = make_route("/upload", &["POST"]);
         let server = make_server("s", &["localhost"], vec![route]);
         let router = Router {
-            server: server.clone(),
+            servers: vec![server.clone()],
         };
 
         let decision = router.resolve(&server, "/upload", &Method::Get);
@@ -221,7 +266,7 @@ mod tests {
         });
         let server = make_server("s", &["localhost"], vec![route]);
         let router = Router {
-            server: server.clone(),
+            servers: vec![server.clone()],
         };
 
         let decision = router.resolve(&server, "/old", &Method::Get);
@@ -238,7 +283,7 @@ mod tests {
     fn resolve_returns_not_found_when_no_route_matches() {
         let server = make_server("s", &["localhost"], vec![make_route("/ok", &["GET"])]);
         let router = Router {
-            server: server.clone(),
+            servers: vec![server.clone()],
         };
 
         let decision = router.resolve(&server, "/missing", &Method::Get);

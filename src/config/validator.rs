@@ -7,7 +7,7 @@ impl ConfigValidator {
     pub fn validate(config: &ServerConfig) -> Result<(), String> {
         Self::validate_global(&config.global)?;
         Self::validate_error_pages(&config.error_pages)?;
-        Self::validate_server(&config.server)?;
+        Self::validate_servers(&config.servers)?;
         Ok(())
     }
 
@@ -36,6 +36,17 @@ impl ConfigValidator {
             if !path.is_file() {
                 return Err(format!("Error page for {} is not a file: {:?}", code, path));
             }
+        }
+        Ok(())
+    }
+
+    /// Validate all servers
+    fn validate_servers(servers: &[Server]) -> Result<(), String> {
+        if servers.is_empty() {
+            return Err("No server configured".to_string());
+        }
+        for server in servers {
+            Self::validate_server(server)?;
         }
         Ok(())
     }
