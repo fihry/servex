@@ -10,6 +10,7 @@ struct TestServer {
     child: Child,
     dir: PathBuf,
     port: u16,
+    clock_tick_file: Option<PathBuf>,
 }
 
 impl Drop for TestServer {
@@ -71,23 +72,49 @@ fn wait_until_ready(port: u16) {
     panic!("server did not become ready");
 }
 
-fn start_server(name: &str, timeout: u64, session: Option<&str>) -> TestServer {
+fn start_server(
+    name: &str,
+    timeout: u64,
+    session: Option<&str>,
+    clock_step_ms: Option<u64>,
+) -> TestServer {
     let dir = unique_test_dir(name);
     fs::create_dir_all(&dir).expect("failed to create test dir");
     let port = find_free_port();
     write_config(&dir, port, timeout, session);
 
     let bin = resolve_binary_path();
-    let child = Command::new(bin)
-        .current_dir(&dir)
+    let mut cmd = Command::new(bin);
+    cmd.current_dir(&dir)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("failed to start servex");
+        .stderr(Stdio::null());
+    let mut clock_tick_file = None;
+    if let Some(step_ms) = clock_step_ms {
+        let tick_file = dir.join("clock_ticks");
+        fs::write(&tick_file, "0\n").expect("failed to initialize clock tick file");
+        cmd.env("SERVEX_CLOCK_MODE", "manual")
+            .env("SERVEX_CLOCK_TICK_FILE", &tick_file)
+            .env("SERVEX_CLOCK_STEP_MS", step_ms.to_string());
+        clock_tick_file = Some(tick_file);
+    }
+    let child = cmd.spawn().expect("failed to start servex");
 
-    let server = TestServer { child, dir, port };
+    let server = TestServer {
+        child,
+        dir,
+        port,
+        clock_tick_file,
+    };
     wait_until_ready(server.port);
     server
+}
+
+fn set_clock_ticks(server: &TestServer, ticks: u64) {
+    if let Some(path) = &server.clock_tick_file {
+        fs::write(path, format!("{ticks}\n")).expect("failed to set clock ticks");
+    } else {
+        panic!("clock ticks requested for server without mock clock");
+    }
 }
 
 fn resolve_binary_path() -> PathBuf {
@@ -141,7 +168,7 @@ fn header_value<'a>(response: &'a str, header: &str) -> Option<&'a str> {
 
 #[test]
 fn integration_connection_idle_timeout_returns_408() {
-    let server = start_server("idle_timeout", 1, None);
+    let server = start_server("idle_timeout", 1, None, Some(1_500));
     let mut stream = TcpStream::connect(("127.0.0.1", server.port)).expect("connect failed");
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
@@ -151,7 +178,7 @@ fn integration_connection_idle_timeout_returns_408() {
         .write_all(b"GET /ok HTTP/1.1\r\nHost: localhost\r\n")
         .expect("partial request write failed");
 
-    sleep(Duration::from_secs(2));
+    set_clock_ticks(&server, 2);
 
     let mut response = Vec::new();
     stream
@@ -177,6 +204,7 @@ cookie_name = LOCALSERVER_SESSION\n\
 secure = false\n\
 http_only = true\n",
         ),
+        None,
     );
 
     let response = http_request(
@@ -201,6 +229,7 @@ cookie_name = LOCALSERVER_SESSION\n\
 secure = false\n\
 http_only = true\n",
         ),
+        Some(1_500),
     );
 
     let first = http_request(
@@ -215,7 +244,7 @@ http_only = true\n",
         .expect("missing cookie kv")
         .to_string();
 
-    sleep(Duration::from_secs(2));
+    set_clock_ticks(&server, 2);
 
     let second = http_request(
         server.port,
@@ -231,3 +260,5 @@ http_only = true\n",
         "session cookie should rotate after timeout"
     );
 }
+
+    

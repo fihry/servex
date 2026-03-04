@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use crate::config::models::{CgiConfig, ServerConfig};
 use crate::http::builder::response::ResponseBuilder;
@@ -11,6 +11,8 @@ use crate::http::models::request::Request;
 use crate::http::models::status::Status;
 use crate::http::parser::multipart::parse_multipart;
 use crate::routing::{RouteDecision, Router};
+
+use super::clock;
 
 pub(super) fn should_keep_alive(config: &ServerConfig, version: &str, request: &Request) -> bool {
     if !config.global.keep_alive {
@@ -389,10 +391,7 @@ pub(super) fn store_upload(upload_dir: &Path, request: &Request) -> Result<PathB
         }
     }
 
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
+    let millis = clock::unix_millis();
     let path = upload_dir.join(format!("upload_{}.bin", millis));
     fs::write(&path, &request.body).map_err(|_| Status::INTERNAL_SERVER_ERROR)?;
     Ok(path)
@@ -435,7 +434,7 @@ pub(super) fn attach_session_cookie(
         return;
     }
 
-    let now = Instant::now();
+    let now = clock::now_instant();
     sessions.retain(|_, created| {
         now.duration_since(*created).as_secs() <= config.sessions.timeout() as u64
     });
@@ -472,10 +471,7 @@ pub(super) fn attach_session_cookie(
 }
 
 fn generate_session_id() -> String {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
+    let nanos = clock::unix_nanos();
     format!("{:x}", nanos)
 }
 

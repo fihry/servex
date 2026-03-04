@@ -1,3 +1,4 @@
+mod clock;
 mod core;
 
 #[cfg(test)]
@@ -63,7 +64,7 @@ impl Connection {
             write_buf: Vec::new(),
             close_after_write: false,
             peer_closed: false,
-            last_active: Instant::now(),
+            last_active: clock::now_instant(),
         }
     }
 }
@@ -136,7 +137,7 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
         }
 
         let mut to_remove = Vec::new();
-        let now = Instant::now();
+        let now = clock::now_instant();
         for (token, conn) in &mut connections {
             if now.duration_since(conn.last_active).as_secs() > config.global.timeout {
                 if conn.write_buf.is_empty() {
@@ -220,7 +221,7 @@ fn read_from_client(
             conn.peer_closed = true;
         }
         Ok(n) => {
-            conn.last_active = Instant::now();
+            conn.last_active = clock::now_instant();
             conn.read_buf.extend_from_slice(&buffer[..n]);
         }
         Err(err) if err.kind() == ErrorKind::WouldBlock => {}
@@ -269,7 +270,7 @@ fn write_to_client(conn: &mut Connection) {
             conn.close_after_write = true;
         }
         Ok(n) => {
-            conn.last_active = Instant::now();
+            conn.last_active = clock::now_instant();
             conn.write_buf.drain(..n);
         }
         Err(err) if err.kind() == ErrorKind::WouldBlock => {}
