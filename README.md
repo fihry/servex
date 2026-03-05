@@ -85,14 +85,31 @@ Notes:
 
 ## Testing
 
+### Test Types Included
+
+- Unit tests:
+  - Located inside source modules under `src/` (`#[test]`).
+  - Validate parser logic, config loading/validation, routing decisions, runtime helper behavior, and HTTP builder/parsers.
+- Integration tests:
+  - Located in `tests/integration_test.rs`.
+  - Spawn the real `servex` binary and verify end-to-end behavior through TCP sockets.
+- External black-box tests:
+  - Located in `external_tests/`.
+  - Execute shell-level checks against a running server (`run.sh`, `audit_run.sh`, `extra_tests.sh`).
+- Stress/performance checks:
+  - Manual load testing via `siege` for availability/performance validation.
+
 ### Rust tests
 
 ```bash
-# unit + integration tests
+# unit + integration tests (Rust test harness)
 cargo test
 
 # binary-target tests (useful in restricted environments)
 cargo test --bin servex
+
+# integration tests only
+cargo test --test integration_test
 ```
 
 ### External scripts
