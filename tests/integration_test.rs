@@ -55,6 +55,28 @@ fn write_config(dir: &Path, port: u16, global_timeout: u64, session: Option<&str
     fs::write(dir.join("application.conf"), content).expect("failed to write application.conf");
 }
 
+fn write_virtual_host_config(dir: &Path, port: u16) {
+    let main_root = dir.join("www");
+    let blog_root = dir.join("www_blog");
+    fs::create_dir_all(&main_root).expect("failed to create main root");
+    fs::create_dir_all(&blog_root).expect("failed to create blog root");
+    fs::write(main_root.join("index.html"), "<h1>Main VHost</h1>")
+        .expect("failed to write main index");
+    fs::write(blog_root.join("index.html"), "<h1>Blog VHost</h1>")
+        .expect("failed to write blog index");
+    fs::write(main_root.join("ok"), "ok").expect("failed to write main /ok resource");
+
+    let content = format!(
+        "[global]\nmax_body_size = 1048576\ntimeout = 30\nkeep_alive = true\n\n\
+[server:main]\nserver_name = localhost,test.com\nhost = 127.0.0.1\nports = {port}\nroot = ./www\n\n\
+[server:blog]\nserver_name = blog.test\nhost = 127.0.0.1\nports = {port}\nroot = ./www_blog\n\n\
+[route:main:root]\npath = /\nmethods = GET\nindex = index.html\nautoindex = false\n\n\
+[route:main:ok]\npath = /ok\nmethods = GET\nindex = ok\nautoindex = false\n\n\
+[route:blog:root]\npath = /\nmethods = GET\nindex = index.html\nautoindex = false\n"
+    );
+    fs::write(dir.join("application.conf"), content).expect("failed to write vhost application.conf");
+}
+
 fn wait_until_ready(port: u16) {
     let mut attempts = 0;
     while attempts < 60 {
@@ -104,6 +126,30 @@ fn start_server(
         dir,
         port,
         clock_tick_file,
+    };
+    wait_until_ready(server.port);
+    server
+}
+
+fn start_virtual_host_server(name: &str) -> TestServer {
+    let dir = unique_test_dir(name);
+    fs::create_dir_all(&dir).expect("failed to create test dir");
+    let port = find_free_port();
+    write_virtual_host_config(&dir, port);
+
+    let bin = resolve_binary_path();
+    let child = Command::new(bin)
+        .current_dir(&dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to start servex");
+
+    let server = TestServer {
+        child,
+        dir,
+        port,
+        clock_tick_file: None,
     };
     wait_until_ready(server.port);
     server
@@ -261,4 +307,50 @@ http_only = true\n",
     );
 }
 
-    
+#[test]
+fn integration_virtual_host_blog_selected_on_shared_port() {
+    let server = start_virtual_host_server("virtual_host_blog_shared_port");
+
+    let main = http_request(
+        server.port,
+        "GET / HTTP/1.1\r\nHost: test.com\r\nConnection: close\r\n\r\n",
+    )
+    .expect("main host request failed");
+    assert!(
+        main.starts_with("HTTP/1.1 200"),
+        "expected 200 for main vhost, got: {main}"
+    );
+    assert!(
+        main.contains("Main VHost"),
+        "main vhost body marker missing, got: {main}"
+    );
+    assert!(
+        !main.contains("Blog VHost"),
+        "main response should not contain blog marker, got: {main}"
+    );
+
+    let blog = http_request(
+        server.port,
+        &format!(
+            "GET / HTTP/1.1\r\nHost: blog.test:{}\r\nConnection: close\r\n\r\n",
+            server.port
+        ),
+    )
+    .expect("blog host request failed");
+    assert!(
+        blog.starts_with("HTTP/1.1 200"),
+        "expected 200 for blog vhost, got: {blog}"
+    );
+    assert!(
+        blog.contains("Blog VHost"),
+        "blog vhost body marker missing, got: {blog}"
+    );
+    assert!(
+        !blog.contains("Main VHost"),
+        "blog response should not contain main marker, got: {blog}"
+    );
+}
+#[test]
+fn integration_pipelined_valid_then_invalid_returns_200_then_400_and_closes() {
+    // TODO
+}
