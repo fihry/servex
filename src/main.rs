@@ -5,7 +5,14 @@ mod runtime;
 
 use config::loader::ConfigLoader;
 
-fn main() -> Result<(), String> {
+fn main() {
+    if let Err(err) = run() {
+        eprintln!("server stopped: {}", err);
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), String> {
     let config = ConfigLoader::load("application.conf")?;
     #[cfg(debug_assertions)]
     {

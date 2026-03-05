@@ -24,11 +24,11 @@ pub fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<MultipartPart>
 
     let mut cursor = 0;
     while cursor < body.len() {
-        let boundary_pos = find_boundary(body, boundary_bytes, cursor);
-        if boundary_pos.is_none() {
-            break;
-        }
-        let start = boundary_pos.unwrap() + boundary_bytes.len();
+        let boundary_pos = match find_boundary(body, boundary_bytes, cursor) {
+            Some(pos) => pos,
+            None => break,
+        };
+        let start = boundary_pos + boundary_bytes.len();
         if body.len() >= start + 2 && &body[start..start + 2] == b"--" {
             break;
         }

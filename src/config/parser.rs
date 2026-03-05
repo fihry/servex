@@ -41,7 +41,17 @@ impl IniParser {
                     );
                 }
 
-                sections.get_mut(&current_section).unwrap().insert(key, value);
+                if let Some(section) = sections.get_mut(&current_section) {
+                    section.insert(key, value);
+                } else {
+                    return Err(
+                        format!(
+                            "Internal parser error at line {}: section '{}' missing",
+                            line_num + 1,
+                            current_section
+                        )
+                    );
+                }
             } else {
                 return Err(format!("Invalid syntax at line {}: {}", line_num + 1, line));
             }

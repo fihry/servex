@@ -25,6 +25,7 @@ mod tests;
 use std::collections::HashMap;
 use std::io::{ErrorKind, Read, Write};
 use std::net::SocketAddr;
+use std::thread;
 use std::time::{Duration, Instant};
 
 use mio::net::{TcpListener, TcpStream};
@@ -110,19 +111,27 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
     }
 
     loop {
-        poll.poll(&mut events, Some(Duration::from_millis(200)))
-            .map_err(|e| format!("poll failed: {}", e))?;
+        if let Err(e) = poll.poll(&mut events, Some(Duration::from_millis(200))) {
+            if e.kind() == ErrorKind::Interrupted {
+                continue;
+            }
+            eprintln!("poll failed: {}", e);
+            thread::sleep(Duration::from_millis(50));
+            continue;
+        }
 
         for event in &events {
             let token = event.token();
             if listeners.contains_key(&token) {
-                accept_clients(
+                if let Err(err) = accept_clients(
                     &mut listeners,
                     &mut connections,
                     poll.registry(),
                     token,
                     &mut next_token,
-                )?;
+                ) {
+                    eprintln!("accept loop failed for listener {:?}: {}", token, err);
+                }
                 continue;
             }
 
@@ -182,18 +191,20 @@ fn accept_clients(
     listener_token: Token,
     next_token: &mut usize,
 ) -> Result<(), String> {
-    let entry = listeners
-        .get_mut(&listener_token)
-        .ok_or_else(|| "missing listener for token".to_string())?;
+    let Some(entry) = listeners.get_mut(&listener_token) else {
+        eprintln!("listener token {:?} missing during accept", listener_token);
+        return Ok(());
+    };
 
     loop {
         match entry.listener.accept() {
             Ok((mut stream, _)) => {
                 let token = Token(*next_token);
                 *next_token += 1;
-                registry
-                    .register(&mut stream, token, Interest::READABLE)
-                    .map_err(|e| format!("failed to register connection: {}", e))?;
+                if let Err(e) = registry.register(&mut stream, token, Interest::READABLE) {
+                    eprintln!("failed to register connection {:?}: {}", token, e);
+                    continue;
+                }
                 connections.insert(
                     token,
                     Connection::new(stream, entry.server_candidates.clone()),
