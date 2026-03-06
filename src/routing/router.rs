@@ -96,10 +96,7 @@ impl Router {
             return RouteDecision::MethodNotAllowed;
         }
 
-        let root = route
-            .root
-            .clone()
-            .unwrap_or_else(|| server.root.clone());
+        let root = route.root.clone().unwrap_or_else(|| server.root.clone());
 
         RouteDecision::Matched {
             route_path: route.path.clone(),
@@ -237,7 +234,11 @@ mod tests {
 
         let decision = router.resolve(&server, "/api/v1/users", &Method::Get);
         match decision {
-            RouteDecision::Matched { route_path, autoindex, .. } => {
+            RouteDecision::Matched {
+                route_path,
+                autoindex,
+                ..
+            } => {
                 assert_eq!(route_path, "/api/v1");
                 assert!(autoindex);
             }

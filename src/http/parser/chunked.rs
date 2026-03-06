@@ -11,9 +11,11 @@ pub fn decode_chunked(body: &[u8]) -> Result<(Vec<u8>, usize), ChunkedError> {
 
     loop {
         let line_end = find_crlf(body, index).ok_or(ChunkedError::Incomplete)?;
-        let size_line = std::str::from_utf8(&body[index..line_end]).map_err(|_| ChunkedError::InvalidSize)?;
+        let size_line =
+            std::str::from_utf8(&body[index..line_end]).map_err(|_| ChunkedError::InvalidSize)?;
         let size_part = size_line.split(';').next().unwrap_or(size_line);
-        let size = usize::from_str_radix(size_part.trim(), 16).map_err(|_| ChunkedError::InvalidSize)?;
+        let size =
+            usize::from_str_radix(size_part.trim(), 16).map_err(|_| ChunkedError::InvalidSize)?;
         index = line_end + 2;
 
         if size == 0 {

@@ -13,13 +13,11 @@ pub enum RequestParseError {
 pub fn parse_request(buffer: &[u8]) -> Result<(Request, usize), RequestParseError> {
     let header_end = find_header_end(buffer).ok_or(RequestParseError::Incomplete)?;
     let header_block = &buffer[..header_end];
-    let header_text = std::str::from_utf8(header_block)
-        .map_err(|_| RequestParseError::Invalid(()))?;
+    let header_text =
+        std::str::from_utf8(header_block).map_err(|_| RequestParseError::Invalid(()))?;
 
     let mut lines = header_text.split("\r\n");
-    let request_line = lines
-        .next()
-        .ok_or_else(|| RequestParseError::Invalid(()))?;
+    let request_line = lines.next().ok_or_else(|| RequestParseError::Invalid(()))?;
     let mut request_parts = request_line.split_whitespace();
     let method = request_parts
         .next()
@@ -32,8 +30,7 @@ pub fn parse_request(buffer: &[u8]) -> Result<(Request, usize), RequestParseErro
         .ok_or_else(|| RequestParseError::Invalid(()))?;
 
     let header_lines: Vec<&str> = lines.collect();
-    let headers = parse_header_lines(&header_lines)
-        .map_err(|_| RequestParseError::Invalid(()))?;
+    let headers = parse_header_lines(&header_lines).map_err(|_| RequestParseError::Invalid(()))?;
 
     let body_start = header_end + 4;
     let mut consumed = body_start;
@@ -41,8 +38,8 @@ pub fn parse_request(buffer: &[u8]) -> Result<(Request, usize), RequestParseErro
 
     if let Some(encoding) = headers.get("transfer-encoding") {
         if encoding.eq_ignore_ascii_case("chunked") {
-            let (decoded, used) = decode_chunked(&buffer[body_start..])
-                .map_err(RequestParseError::Chunked)?;
+            let (decoded, used) =
+                decode_chunked(&buffer[body_start..]).map_err(RequestParseError::Chunked)?;
             body = decoded;
             consumed = body_start + used;
         }
@@ -71,9 +68,7 @@ pub fn parse_request(buffer: &[u8]) -> Result<(Request, usize), RequestParseErro
 }
 
 fn find_header_end(buffer: &[u8]) -> Option<usize> {
-    buffer
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
+    buffer.windows(4).position(|window| window == b"\r\n\r\n")
 }
 
 #[cfg(test)]

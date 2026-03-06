@@ -37,10 +37,12 @@ pub fn parse_multipart(body: &[u8], boundary: &str) -> Result<Vec<MultipartPart>
         let header_block = &body[part_start..header_end];
         let header_text = String::from_utf8_lossy(header_block);
         let header_lines: Vec<&str> = header_text.split("\r\n").collect();
-        let headers = parse_header_lines(&header_lines).map_err(|_| MultipartError::InvalidHeaders)?;
+        let headers =
+            parse_header_lines(&header_lines).map_err(|_| MultipartError::InvalidHeaders)?;
 
         let data_start = header_end + 4;
-        let next_boundary = find_boundary(body, boundary_bytes, data_start).ok_or(MultipartError::InvalidBoundary)?;
+        let next_boundary = find_boundary(body, boundary_bytes, data_start)
+            .ok_or(MultipartError::InvalidBoundary)?;
         let mut data_end = next_boundary;
         if data_end >= 2 && &body[data_end - 2..data_end] == b"\r\n" {
             data_end -= 2;

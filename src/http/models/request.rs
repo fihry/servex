@@ -11,7 +11,13 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn new(method: Method, path: String, version: String, headers: Headers, body: Vec<u8>) -> Self {
+    pub fn new(
+        method: Method,
+        path: String,
+        version: String,
+        headers: Headers,
+        body: Vec<u8>,
+    ) -> Self {
         Self {
             method,
             path,

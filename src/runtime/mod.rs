@@ -1,11 +1,10 @@
-mod clock;
 mod core;
 
 #[cfg(test)]
 mod handlers {
     pub(super) use super::core::{
-        Target, build_response, handle_matched, resolve_delete_target, resolve_relative_path,
-        resolve_target_path, should_keep_alive, store_upload,
+        build_response, handle_matched, resolve_delete_target, resolve_relative_path,
+        resolve_target_path, should_keep_alive, store_upload, Target,
     };
 }
 
@@ -34,7 +33,7 @@ use mio::{Events, Interest, Poll, Token};
 use crate::config::models::ServerConfig;
 use crate::http::models::status::Status;
 use crate::http::parser::chunked::ChunkedError;
-use crate::http::parser::request::{RequestParseError, parse_request};
+use crate::http::parser::request::{parse_request, RequestParseError};
 use crate::routing::Router;
 
 use core::{build_error_response, build_response, should_keep_alive};
@@ -65,7 +64,7 @@ impl Connection {
             write_buf: Vec::new(),
             close_after_write: false,
             peer_closed: false,
-            last_active: clock::now_instant(),
+            last_active: Instant::now(),
         }
     }
 }
@@ -83,9 +82,9 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
     let mut listeners_by_addr: HashMap<SocketAddr, Vec<usize>> = HashMap::new();
     for (server_index, server) in config.servers.iter().enumerate() {
         for port in &server.ports {
-            let addr: SocketAddr = format!("{}:{}", server.host, port)
-                .parse()
-                .map_err(|e| format!("invalid listener addr for {}:{}: {}", server.host, port, e))?;
+            let addr: SocketAddr = format!("{}:{}", server.host, port).parse().map_err(|e| {
+                format!("invalid listener addr for {}:{}: {}", server.host, port, e)
+            })?;
             listeners_by_addr
                 .entry(addr)
                 .or_default()
@@ -146,7 +145,7 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
         }
 
         let mut to_remove = Vec::new();
-        let now = clock::now_instant();
+        let now = Instant::now();
         for (token, conn) in &mut connections {
             if now.duration_since(conn.last_active).as_secs() > config.global.timeout {
                 if conn.write_buf.is_empty() {
@@ -170,7 +169,10 @@ pub fn run(config: ServerConfig) -> Result<(), String> {
             } else {
                 Interest::READABLE.add(Interest::WRITABLE)
             };
-            if let Err(e) = poll.registry().reregister(&mut conn.socket, *token, interest) {
+            if let Err(e) = poll
+                .registry()
+                .reregister(&mut conn.socket, *token, interest)
+            {
                 eprintln!("reregister failed for {:?}: {}", token, e);
                 to_remove.push(*token);
             }
@@ -232,7 +234,7 @@ fn read_from_client(
             conn.peer_closed = true;
         }
         Ok(n) => {
-            conn.last_active = clock::now_instant();
+            conn.last_active = Instant::now();
             conn.read_buf.extend_from_slice(&buffer[..n]);
         }
         Err(err) if err.kind() == ErrorKind::WouldBlock => {}
@@ -281,7 +283,7 @@ fn write_to_client(conn: &mut Connection) {
             conn.close_after_write = true;
         }
         Ok(n) => {
-            conn.last_active = clock::now_instant();
+            conn.last_active = Instant::now();
             conn.write_buf.drain(..n);
         }
         Err(err) if err.kind() == ErrorKind::WouldBlock => {}

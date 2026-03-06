@@ -10,7 +10,6 @@ struct TestServer {
     child: Child,
     dir: PathBuf,
     port: u16,
-    clock_tick_file: Option<PathBuf>,
 }
 
 impl Drop for TestServer {
@@ -31,10 +30,7 @@ fn unique_test_dir(prefix: &str) -> PathBuf {
 
 fn find_free_port() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind ephemeral port");
-    listener
-        .local_addr()
-        .expect("missing local addr")
-        .port()
+    listener.local_addr().expect("missing local addr").port()
 }
 
 fn write_config(dir: &Path, port: u16, global_timeout: u64, session: Option<&str>) {
@@ -74,7 +70,8 @@ fn write_virtual_host_config(dir: &Path, port: u16) {
 [route:main:ok]\npath = /ok\nmethods = GET\nindex = ok\nautoindex = false\n\n\
 [route:blog:root]\npath = /\nmethods = GET\nindex = index.html\nautoindex = false\n"
     );
-    fs::write(dir.join("application.conf"), content).expect("failed to write vhost application.conf");
+    fs::write(dir.join("application.conf"), content)
+        .expect("failed to write vhost application.conf");
 }
 
 fn wait_until_ready(port: u16) {
@@ -94,12 +91,7 @@ fn wait_until_ready(port: u16) {
     panic!("server did not become ready");
 }
 
-fn start_server(
-    name: &str,
-    timeout: u64,
-    session: Option<&str>,
-    clock_step_ms: Option<u64>,
-) -> TestServer {
+fn start_server(name: &str, timeout: u64, session: Option<&str>) -> TestServer {
     let dir = unique_test_dir(name);
     fs::create_dir_all(&dir).expect("failed to create test dir");
     let port = find_free_port();
@@ -110,23 +102,9 @@ fn start_server(
     cmd.current_dir(&dir)
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    let mut clock_tick_file = None;
-    if let Some(step_ms) = clock_step_ms {
-        let tick_file = dir.join("clock_ticks");
-        fs::write(&tick_file, "0\n").expect("failed to initialize clock tick file");
-        cmd.env("SERVEX_CLOCK_MODE", "manual")
-            .env("SERVEX_CLOCK_TICK_FILE", &tick_file)
-            .env("SERVEX_CLOCK_STEP_MS", step_ms.to_string());
-        clock_tick_file = Some(tick_file);
-    }
     let child = cmd.spawn().expect("failed to start servex");
 
-    let server = TestServer {
-        child,
-        dir,
-        port,
-        clock_tick_file,
-    };
+    let server = TestServer { child, dir, port };
     wait_until_ready(server.port);
     server
 }
@@ -145,22 +123,9 @@ fn start_virtual_host_server(name: &str) -> TestServer {
         .spawn()
         .expect("failed to start servex");
 
-    let server = TestServer {
-        child,
-        dir,
-        port,
-        clock_tick_file: None,
-    };
+    let server = TestServer { child, dir, port };
     wait_until_ready(server.port);
     server
-}
-
-fn set_clock_ticks(server: &TestServer, ticks: u64) {
-    if let Some(path) = &server.clock_tick_file {
-        fs::write(path, format!("{ticks}\n")).expect("failed to set clock ticks");
-    } else {
-        panic!("clock ticks requested for server without mock clock");
-    }
 }
 
 fn resolve_binary_path() -> PathBuf {
@@ -169,7 +134,9 @@ fn resolve_binary_path() -> PathBuf {
     }
 
     let current = std::env::current_exe().expect("cannot resolve current test executable path");
-    let deps_dir = current.parent().expect("missing parent for test executable");
+    let deps_dir = current
+        .parent()
+        .expect("missing parent for test executable");
     let direct = deps_dir
         .parent()
         .expect("missing parent target/debug directory")
@@ -200,21 +167,19 @@ fn http_request(port: u16, request: &str) -> Result<String, String> {
 
 fn header_value<'a>(response: &'a str, header: &str) -> Option<&'a str> {
     let needle = format!("{}:", header.to_ascii_lowercase());
-    response
-        .split("\r\n")
-        .find_map(|line| {
-            let lower = line.to_ascii_lowercase();
-            if lower.starts_with(&needle) {
-                line.split_once(':').map(|(_, value)| value.trim())
-            } else {
-                None
-            }
-        })
+    response.split("\r\n").find_map(|line| {
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with(&needle) {
+            line.split_once(':').map(|(_, value)| value.trim())
+        } else {
+            None
+        }
+    })
 }
 
 #[test]
 fn integration_connection_idle_timeout_returns_408() {
-    let server = start_server("idle_timeout", 1, None, Some(1_500));
+    let server = start_server("idle_timeout", 1, None);
     let mut stream = TcpStream::connect(("127.0.0.1", server.port)).expect("connect failed");
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
@@ -224,7 +189,7 @@ fn integration_connection_idle_timeout_returns_408() {
         .write_all(b"GET /ok HTTP/1.1\r\nHost: localhost\r\n")
         .expect("partial request write failed");
 
-    set_clock_ticks(&server, 2);
+    sleep(Duration::from_millis(2200));
 
     let mut response = Vec::new();
     stream
@@ -250,7 +215,6 @@ cookie_name = LOCALSERVER_SESSION\n\
 secure = false\n\
 http_only = true\n",
         ),
-        None,
     );
 
     let response = http_request(
@@ -275,7 +239,6 @@ cookie_name = LOCALSERVER_SESSION\n\
 secure = false\n\
 http_only = true\n",
         ),
-        Some(1_500),
     );
 
     let first = http_request(
@@ -290,7 +253,7 @@ http_only = true\n",
         .expect("missing cookie kv")
         .to_string();
 
-    set_clock_ticks(&server, 2);
+    sleep(Duration::from_millis(2200));
 
     let second = http_request(
         server.port,

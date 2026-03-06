@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crate::config::models::{CgiConfig, ServerConfig};
 use crate::http::builder::response::ResponseBuilder;
@@ -11,8 +11,6 @@ use crate::http::models::request::Request;
 use crate::http::models::status::Status;
 use crate::http::parser::multipart::parse_multipart;
 use crate::routing::{RouteDecision, Router};
-
-use super::clock;
 
 pub(super) fn should_keep_alive(config: &ServerConfig, version: &str, request: &Request) -> bool {
     if !config.global.keep_alive {
@@ -327,7 +325,10 @@ fn execute_cgi(
         .arg(&script_path)
         .env("PATH_INFO", script_path.display().to_string())
         .env("REQUEST_METHOD", request.method.to_string())
-        .env("CONTENT_TYPE", request.headers.get("content-type").unwrap_or(""))
+        .env(
+            "CONTENT_TYPE",
+            request.headers.get("content-type").unwrap_or(""),
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -372,7 +373,8 @@ pub(super) fn store_upload(upload_dir: &Path, request: &Request) -> Result<PathB
     if let Some(content_type) = request.headers.get("content-type") {
         if content_type.contains("multipart/form-data") {
             if let Some(boundary) = extract_boundary(content_type) {
-                let parts = parse_multipart(&request.body, boundary).map_err(|_| Status::BAD_REQUEST)?;
+                let parts =
+                    parse_multipart(&request.body, boundary).map_err(|_| Status::BAD_REQUEST)?;
                 for (idx, part) in parts.iter().enumerate() {
                     let filename = part
                         .headers
@@ -391,7 +393,10 @@ pub(super) fn store_upload(upload_dir: &Path, request: &Request) -> Result<PathB
         }
     }
 
-    let millis = clock::unix_millis();
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
     let path = upload_dir.join(format!("upload_{}.bin", millis));
     fs::write(&path, &request.body).map_err(|_| Status::INTERNAL_SERVER_ERROR)?;
     Ok(path)
@@ -434,7 +439,7 @@ pub(super) fn attach_session_cookie(
         return;
     }
 
-    let now = clock::now_instant();
+    let now = Instant::now();
     sessions.retain(|_, created| {
         now.duration_since(*created).as_secs() <= config.sessions.timeout() as u64
     });
@@ -471,7 +476,10 @@ pub(super) fn attach_session_cookie(
 }
 
 fn generate_session_id() -> String {
-    let nanos = clock::unix_nanos();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     format!("{:x}", nanos)
 }
 
@@ -494,7 +502,11 @@ fn directory_listing(path: &Path, request_path: &str) -> String {
     html
 }
 
-pub(super) fn build_error_response(config: &ServerConfig, status: Status, keep_alive: bool) -> Vec<u8> {
+pub(super) fn build_error_response(
+    config: &ServerConfig,
+    status: Status,
+    keep_alive: bool,
+) -> Vec<u8> {
     let body = match config.error_pages.get(&status.code) {
         Some(path) => fs::read(path).unwrap_or_else(|_| fallback_error_body(status)),
         None => fallback_error_body(status),

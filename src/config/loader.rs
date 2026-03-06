@@ -13,7 +13,7 @@ impl ConfigLoader {
     }
 
     fn build_config(
-        sections: HashMap<String, HashMap<String, String>>
+        sections: HashMap<String, HashMap<String, String>>,
     ) -> Result<ServerConfig, String> {
         let mut config: ServerConfig = ServerConfig::default();
         // Parse global config
@@ -101,7 +101,9 @@ impl ConfigLoader {
     fn parse_error_pages(data: &HashMap<String, String>) -> Result<HashMap<u16, PathBuf>, String> {
         let mut pages = HashMap::new();
         for (code, path) in data {
-            let code: u16 = code.parse().map_err(|_| format!("Invalid error code: {}", code))?;
+            let code: u16 = code
+                .parse()
+                .map_err(|_| format!("Invalid error code: {}", code))?;
             pages.insert(code, PathBuf::from(path));
         }
         Ok(pages)
@@ -112,12 +114,7 @@ impl ConfigLoader {
 
         let methods: Vec<String> = data
             .get("methods")
-            .map(|s|
-                s
-                    .split(',')
-                    .map(|m| m.trim().to_uppercase())
-                    .collect()
-            )
+            .map(|s| s.split(',').map(|m| m.trim().to_uppercase()).collect())
             .unwrap_or_else(|| vec!["GET".to_string()]);
 
         let root = data.get("root").map(PathBuf::from);
@@ -131,8 +128,8 @@ impl ConfigLoader {
         let max_file_size = data.get("max_file_size").and_then(|s| s.parse().ok());
 
         // Parse CGI
-        let cgi = if
-            let (Some(ext), Some(exec)) = (data.get("cgi_extension"), data.get("cgi_executor"))
+        let cgi = if let (Some(ext), Some(exec)) =
+            (data.get("cgi_extension"), data.get("cgi_executor"))
         {
             Some(CgiConfig {
                 extension: ext.to_string(),
@@ -143,11 +140,8 @@ impl ConfigLoader {
         };
 
         // Parse redirect
-        let redirect = if
-            let (Some(status), Some(target)) = (
-                data.get("redirect_status"),
-                data.get("redirect_target"),
-            )
+        let redirect = if let (Some(status), Some(target)) =
+            (data.get("redirect_status"), data.get("redirect_target"))
         {
             Some(Redirect {
                 status: status.parse().map_err(|_| "Invalid redirect status")?,
@@ -316,7 +310,8 @@ mod tests {
             kv(&[("path", "/ok"), ("methods", "GET")]),
         );
 
-        let config = ConfigLoader::build_config(sections).expect("single-server fallback should work");
+        let config =
+            ConfigLoader::build_config(sections).expect("single-server fallback should work");
         assert_eq!(config.servers.len(), 1);
         assert_eq!(config.servers[0].routes.len(), 1);
         assert_eq!(config.servers[0].routes[0].path, "/ok");

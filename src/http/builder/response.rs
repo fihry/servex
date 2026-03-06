@@ -49,7 +49,11 @@ impl ResponseBuilder {
         }
 
         response.extend_from_slice(b"Connection: ");
-        response.extend_from_slice(if self.keep_alive { b"keep-alive" } else { b"close" });
+        response.extend_from_slice(if self.keep_alive {
+            b"keep-alive"
+        } else {
+            b"close"
+        });
         response.extend_from_slice(b"\r\n\r\n");
         response.extend_from_slice(&self.body);
         response

@@ -26,7 +26,7 @@ impl ConfigValidator {
 
     /// Validate error page paths exist
     fn validate_error_pages(
-        pages: &std::collections::HashMap<u16, std::path::PathBuf>
+        pages: &std::collections::HashMap<u16, std::path::PathBuf>,
     ) -> Result<(), String> {
         for (code, path) in pages {
             if !path.exists() {
@@ -82,15 +82,17 @@ impl ConfigValidator {
 
         // Validate root directory exists
         if !server.root.exists() {
-            return Err(
-                format!("Server '{}' root directory does not exist: {:?}", server.name, server.root)
-            );
+            return Err(format!(
+                "Server '{}' root directory does not exist: {:?}",
+                server.name, server.root
+            ));
         }
 
         if !server.root.is_dir() {
-            return Err(
-                format!("Server '{}' root is not a directory: {:?}", server.name, server.root)
-            );
+            return Err(format!(
+                "Server '{}' root is not a directory: {:?}",
+                server.name, server.root
+            ));
         }
 
         // Validate routes
@@ -119,16 +121,20 @@ impl ConfigValidator {
 
         for method in &route.methods {
             if !["GET", "POST", "DELETE", "PUT", "HEAD", "OPTIONS"].contains(&method.as_str()) {
-                return Err(format!("Invalid HTTP method '{}' in route '{}'", method, route.path));
+                return Err(format!(
+                    "Invalid HTTP method '{}' in route '{}'",
+                    method, route.path
+                ));
             }
         }
 
         // Validate CGI configuration
         if let Some(cgi) = &route.cgi {
             if !cgi.executor.exists() {
-                return Err(
-                    format!("CGI executor not found for route '{}': {:?}", route.path, cgi.executor)
-                );
+                return Err(format!(
+                    "CGI executor not found for route '{}': {:?}",
+                    route.path, cgi.executor
+                ));
             }
 
             if cgi.extension.is_empty() {
@@ -136,60 +142,54 @@ impl ConfigValidator {
             }
 
             if !cgi.extension.starts_with('.') {
-                return Err(
-                    format!(
-                        "CGI extension must start with '.' for route '{}': {}",
-                        route.path,
-                        cgi.extension
-                    )
-                );
+                return Err(format!(
+                    "CGI extension must start with '.' for route '{}': {}",
+                    route.path, cgi.extension
+                ));
             }
         }
 
         // Validate redirect
         if let Some(redirect) = &route.redirect {
             if ![301, 302, 303, 307, 308].contains(&redirect.status) {
-                return Err(
-                    format!(
-                        "Invalid redirect status {} for route '{}'",
-                        redirect.status,
-                        route.path
-                    )
-                );
+                return Err(format!(
+                    "Invalid redirect status {} for route '{}'",
+                    redirect.status, route.path
+                ));
             }
 
             if redirect.target.is_empty() {
-                return Err(format!("Redirect target is empty for route '{}'", route.path));
+                return Err(format!(
+                    "Redirect target is empty for route '{}'",
+                    route.path
+                ));
             }
         }
 
         // Validate upload directory
         if let Some(upload_dir) = &route.upload_dir {
             if !upload_dir.exists() {
-                return Err(
-                    format!(
-                        "Upload directory does not exist for route '{}': {:?}",
-                        route.path,
-                        upload_dir
-                    )
-                );
+                return Err(format!(
+                    "Upload directory does not exist for route '{}': {:?}",
+                    route.path, upload_dir
+                ));
             }
 
             if !upload_dir.is_dir() {
-                return Err(
-                    format!(
-                        "Upload path is not a directory for route '{}': {:?}",
-                        route.path,
-                        upload_dir
-                    )
-                );
+                return Err(format!(
+                    "Upload path is not a directory for route '{}': {:?}",
+                    route.path, upload_dir
+                ));
             }
         }
 
         // Validate root if specified
         if let Some(root) = &route.root {
             if !root.exists() {
-                return Err(format!("Route root does not exist for '{}': {:?}", route.path, root));
+                return Err(format!(
+                    "Route root does not exist for '{}': {:?}",
+                    route.path, root
+                ));
             }
         }
 
@@ -341,7 +341,8 @@ mod tests {
             max_file_size: None,
         };
 
-        let err = ConfigValidator::validate_route(&route).expect_err("missing cgi executor must fail");
+        let err =
+            ConfigValidator::validate_route(&route).expect_err("missing cgi executor must fail");
         assert!(err.contains("CGI executor not found"));
     }
 
@@ -362,7 +363,8 @@ mod tests {
             max_file_size: None,
         };
 
-        let err = ConfigValidator::validate_route(&route).expect_err("invalid redirect should fail");
+        let err =
+            ConfigValidator::validate_route(&route).expect_err("invalid redirect should fail");
         assert!(err.contains("Invalid redirect status 309"));
     }
 
@@ -373,7 +375,8 @@ mod tests {
         let mut pages = HashMap::new();
         pages.insert(404u16, dir.clone());
 
-        let err = ConfigValidator::validate_error_pages(&pages).expect_err("directory path should fail");
+        let err =
+            ConfigValidator::validate_error_pages(&pages).expect_err("directory path should fail");
         assert!(err.contains("is not a file"));
         let _ = fs::remove_dir_all(dir);
     }

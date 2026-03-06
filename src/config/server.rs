@@ -1,5 +1,5 @@
-use std::{collections::HashMap, path::PathBuf};
 use super::Route;
+use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct Server {

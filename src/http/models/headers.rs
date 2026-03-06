@@ -18,7 +18,9 @@ impl Headers {
     }
 
     pub fn get(&self, key: &str) -> Option<&str> {
-        self.headers.get(&normalize_key(key)).map(|value| value.as_str())
+        self.headers
+            .get(&normalize_key(key))
+            .map(|value| value.as_str())
     }
 }
 
